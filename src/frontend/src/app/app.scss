@@ -1,0 +1,18 @@
+.home {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  font-family: system-ui, sans-serif;
+}
+
+.status {
+  font-weight: 600;
+
+  &--ok {
+    color: #1a7f37;
+  }
+
+  &--error {
+    color: #cf222e;
+  }
+}

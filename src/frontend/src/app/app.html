@@ -1,0 +1,17 @@
+<main class="home">
+  <h1>InkNote</h1>
+
+  @switch (health().kind) {
+    @case ('loading') {
+      <p class="status">Connecting to API...</p>
+    }
+    @case ('ok') {
+      <p class="status status--ok">API OK</p>
+    }
+    @case ('error') {
+      <p class="status status--error">Cannot reach the API. Is the backend running on port 5032?</p>
+    }
+  }
+</main>
+
+<router-outlet />
