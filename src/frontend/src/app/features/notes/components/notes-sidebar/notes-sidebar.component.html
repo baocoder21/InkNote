@@ -1,0 +1,122 @@
+<div class="side">
+  <header class="head">
+    <span class="brand">
+      <nz-icon nzType="edit" nzTheme="outline" />
+      InkNote
+    </span>
+    <span class="tools">
+      <button type="button" class="tool" title="New note" aria-label="New note" (click)="newNote()">
+        <nz-icon nzType="file-add" nzTheme="outline" />
+      </button>
+      <button
+        type="button"
+        class="tool"
+        [title]="currentFolder() ? 'New folder in ' + currentFolder()!.name : 'New folder'"
+        aria-label="New folder"
+        (click)="newFolder()"
+      >
+        <nz-icon nzType="folder-add" nzTheme="outline" />
+      </button>
+      <button
+        type="button"
+        class="tool"
+        title="Change theme"
+        aria-label="Change theme"
+        nz-dropdown
+        nzTrigger="click"
+        nzPlacement="bottomRight"
+        [nzDropdownMenu]="themeMenu"
+      >
+        <nz-icon nzType="bg-colors" nzTheme="outline" />
+      </button>
+    </span>
+  </header>
+
+  @if (activeTag(); as tag) {
+    <div class="filter">
+      <nz-icon nzType="tag" nzTheme="outline" />
+      <span class="filter__name">Notes tagged "{{ tag.name }}"</span>
+      <a class="filter__clear" routerLink="/notes" title="Show all notes" aria-label="Clear the tag filter">
+        <nz-icon nzType="close" nzTheme="outline" />
+      </a>
+    </div>
+  }
+
+  <div class="tree-area">
+    @if (store.loadingList() && store.notes().length === 0) {
+      <div class="state"><nz-spin nzSimple /></div>
+    } @else if (rows().length === 0) {
+      <p class="state">
+        {{
+          tagId()
+            ? 'No notes have this tag yet.'
+            : 'Nothing here yet. Use the icons above to create a note or a folder.'
+        }}
+      </p>
+    } @else {
+      <app-explorer-tree
+        [rows]="rows()"
+        [currentFolderId]="currentFolderId()"
+        (folderClick)="onFolderClick($event)"
+        (newNoteIn)="newNoteIn($event)"
+        (newFolderIn)="newFolder($event)"
+        (renameFolder)="renameFolder($event)"
+        (deleteFolder)="confirmDeleteFolder($event)"
+        (togglePin)="togglePin($event)"
+        (deleteNote)="confirmDeleteNote($event)"
+      />
+    }
+  </div>
+
+  <section class="tags" aria-label="Tags">
+    <h2 class="tags__title">Tags</h2>
+    <ul class="tag-list">
+      @for (tag of org.tags(); track tag.id) {
+        <li class="tag" [class.tag--active]="tag.id === tagId()" (contextmenu)="openTagMenu($event, tag, tagMenu)">
+          <a class="tag__link" routerLink="/notes" [queryParams]="{ tag: tag.id }">
+            <nz-icon nzType="tag" nzTheme="outline" />
+            <span class="tag__name">{{ tag.name }}</span>
+          </a>
+          <button
+            type="button"
+            class="tag__more"
+            [attr.aria-label]="'Actions for tag ' + tag.name"
+            (click)="openTagMenu($event, tag, tagMenu)"
+          >
+            <nz-icon nzType="ellipsis" nzTheme="outline" />
+          </button>
+        </li>
+      }
+      <li>
+        <button type="button" class="tag-new" (click)="addTag()">
+          <nz-icon nzType="tag" nzTheme="outline" />
+          New tag…
+        </button>
+      </li>
+    </ul>
+  </section>
+</div>
+
+<nz-dropdown-menu #themeMenu="nzDropdownMenu">
+  <ul nz-menu>
+    @for (option of themes; track option.id) {
+      <li nz-menu-item (click)="theme.set(option.id)">
+        <span class="swatch" [style.background]="option.swatch"></span>
+        {{ option.label }}
+        @if (theme.theme() === option.id) {
+          <nz-icon class="check" nzType="check" nzTheme="outline" aria-label="Current theme" />
+        }
+      </li>
+    }
+  </ul>
+</nz-dropdown-menu>
+
+<nz-dropdown-menu #tagMenu="nzDropdownMenu">
+  <ul nz-menu>
+    @if (menuTag(); as tag) {
+      <li nz-menu-item nzDanger (click)="confirmDeleteTag(tag)">
+        <nz-icon nzType="delete" nzTheme="outline" /> Delete tag
+      </li>
+    }
+  </ul>
+</nz-dropdown-menu>

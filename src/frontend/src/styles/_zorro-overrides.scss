@@ -1,0 +1,183 @@
+// Touch-ups for ng-zorro components, so that they follow OUR theme tokens in all three themes.
+// ng-zorro comes in a dark and a light build (see core/theme.service.ts); neither knows our
+// palettes (Nord, Kanagawa Lotus, paper gray), so the pieces the user sees most are restyled
+// here with var(--ink-*). They are global because ng-zorro draws these elements inside its own
+// components, and dropdowns/modals in an overlay at the end of <body>.
+// (Where a rule needs more weight than the stylesheet's own, the class is written twice.)
+
+// ---- Buttons ----
+.ant-btn-primary {
+  background-color: var(--ink-accent);
+  border-color: var(--ink-accent);
+  color: var(--ink-on-accent);
+}
+
+.ant-btn-primary:not(:disabled):hover,
+.ant-btn-primary:not(:disabled):focus {
+  background-color: var(--ink-accent);
+  border-color: var(--ink-accent);
+  color: var(--ink-on-accent);
+  filter: brightness(1.1);
+}
+
+.ant-btn-primary.ant-btn-dangerous,
+.ant-btn-primary.ant-btn-dangerous:not(:disabled):hover {
+  background-color: var(--ink-danger);
+  border-color: var(--ink-danger);
+  color: var(--ink-on-accent);
+}
+
+.ant-btn-default {
+  background-color: transparent;
+  border-color: var(--ink-border-strong);
+  color: var(--ink-text);
+}
+
+.ant-btn-default:not(:disabled):hover {
+  background-color: var(--ink-bg-hover);
+  border-color: var(--ink-accent);
+  color: var(--ink-accent);
+}
+
+.ant-btn-primary:disabled,
+.ant-btn-default:disabled {
+  background-color: var(--ink-bg-hover);
+  border-color: var(--ink-border);
+  color: var(--ink-text-muted);
+}
+
+// ---- Dialogs (new folder, rename, confirm delete) ----
+.ant-modal .ant-modal-content,
+.ant-modal .ant-modal-header {
+  background-color: var(--ink-bg-elevated);
+  color: var(--ink-text);
+}
+
+.ant-modal .ant-modal-title,
+.ant-modal .ant-modal-close,
+.ant-modal-confirm .ant-modal-confirm-title,
+.ant-modal-confirm .ant-modal-confirm-content {
+  color: var(--ink-text);
+}
+
+.ant-modal .ant-modal-header {
+  border-bottom-color: var(--ink-border);
+}
+
+// ---- Text inputs (name dialog) ----
+.ant-input {
+  background-color: var(--ink-bg);
+  border-color: var(--ink-border-strong);
+  color: var(--ink-text);
+}
+
+.ant-input:hover,
+.ant-input:focus {
+  border-color: var(--ink-accent);
+}
+
+// ---- Menus (right-click menus, theme menu) ----
+.ant-dropdown .ant-dropdown-menu,
+.ant-dropdown-menu {
+  background-color: var(--ink-bg-elevated);
+  border: 1px solid var(--ink-border-strong);
+}
+
+.ant-dropdown-menu .ant-dropdown-menu-item,
+.ant-menu .ant-menu-item {
+  color: var(--ink-text);
+}
+
+.ant-dropdown-menu .ant-dropdown-menu-item:hover,
+.ant-menu .ant-menu-item:hover {
+  background-color: var(--ink-bg-hover);
+  color: var(--ink-text);
+}
+
+.ant-dropdown-menu .ant-dropdown-menu-item.ant-dropdown-menu-item-danger,
+.ant-menu .ant-menu-item.ant-menu-item-danger {
+  color: var(--ink-danger);
+}
+
+.ant-dropdown-menu .ant-dropdown-menu-item-divider,
+.ant-menu .ant-menu-item-divider {
+  background-color: var(--ink-border);
+}
+
+// ---- Toasts ----
+.ant-message .ant-message-notice-content {
+  background-color: var(--ink-bg-elevated);
+  color: var(--ink-text);
+  border: 1px solid var(--ink-border-strong);
+}
+
+// ---- View switch (Edit / Split / Preview) ----
+.ant-segmented {
+  background-color: var(--ink-bg-hover);
+  color: var(--ink-text-muted);
+}
+
+.ant-segmented .ant-segmented-item-selected {
+  background-color: var(--ink-bg-elevated);
+  color: var(--ink-text);
+}
+
+// ---- Select (notebook and tag pickers) ----
+.ant-select-outlined:not(.ant-select-disabled) .ant-select-selector {
+  background-color: var(--ink-bg-elevated);
+  border-color: var(--ink-border-strong);
+  color: var(--ink-text);
+}
+
+.ant-select-outlined:not(.ant-select-disabled):hover .ant-select-selector {
+  border-color: var(--ink-text-muted);
+}
+
+.ant-select-outlined.ant-select-focused:not(.ant-select-disabled) .ant-select-selector {
+  border-color: var(--ink-accent);
+}
+
+.ant-select-disabled .ant-select-selector {
+  background-color: var(--ink-bg-sidebar);
+  color: var(--ink-text-muted);
+}
+
+.ant-select .ant-select-selection-placeholder,
+.ant-select .ant-select-arrow {
+  color: var(--ink-text-muted);
+}
+
+.ant-select .ant-select-selection-item {
+  color: var(--ink-text);
+}
+
+.ant-select .ant-select-clear {
+  background: var(--ink-bg-elevated);
+  color: var(--ink-text-muted);
+}
+
+// Chips of the tag picker.
+.ant-select-multiple .ant-select-selection-item {
+  background: var(--ink-bg-hover);
+  border-color: var(--ink-border-strong);
+  color: var(--ink-text);
+}
+
+// The drop-down list (it lives in an overlay at the end of <body>).
+.ant-select-dropdown {
+  background-color: var(--ink-bg-elevated);
+  color: var(--ink-text);
+}
+
+.ant-select-item {
+  color: var(--ink-text);
+}
+
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background-color: var(--ink-bg-hover);
+}
+
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background-color: var(--ink-bg-selected);
+  color: var(--ink-text-selected);
+}

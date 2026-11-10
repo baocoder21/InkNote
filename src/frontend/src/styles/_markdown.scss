@@ -23,20 +23,39 @@
     border-bottom: 1px solid var(--ink-border);
   }
 
+  // The same colors as the editor's Markdown syntax (see --ink-syn-* in _tokens.scss).
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--ink-heading);
+  }
+
+  strong {
+    color: var(--ink-syn-strong);
+  }
+
+  em {
+    color: var(--ink-syn-emphasis);
+  }
+
   a {
-    color: var(--ink-text-selected);
+    color: var(--ink-link);
   }
 
   blockquote {
     margin: 1em 0;
     padding: 0 1em;
-    color: var(--ink-text-muted);
-    border-left: 4px solid var(--ink-border-strong);
+    color: var(--ink-syn-quote);
+    border-left: 4px solid var(--ink-syn-mark);
   }
 
   code {
     padding: 0.15em 0.35em;
     border-radius: 4px;
+    color: var(--ink-syn-code);
     background: var(--ink-bg-code);
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     font-size: 0.9em;
@@ -51,6 +70,7 @@
 
     code {
       padding: 0;
+      color: inherit; // the colors come from Shiki, on each token
       background: none;
       font-size: 0.875rem;
     }

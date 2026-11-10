@@ -1,12 +1,16 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { NzIconDirective } from 'ng-zorro-antd/icon';
+import { ThemeService } from './core/theme.service';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, NzIconDirective],
+  imports: [RouterOutlet],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class App {}
+export class App {
+  constructor() {
+    inject(ThemeService); // creating it applies the saved theme
+  }
+}

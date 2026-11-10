@@ -1,24 +1,10 @@
 :host {
-  display: flex;
-  flex-direction: column;
+  display: block;
   height: 100vh;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--ink-border);
-  background: var(--ink-bg);
-
-  &__title {
-    font-weight: 700;
-    font-size: 1.1rem;
-  }
-}
-
+// The whole window belongs to the feature (it has its own sidebar with the app name).
 .content {
-  flex: 1;
+  height: 100%;
   min-height: 0; // lets children scroll inside instead of growing the page
 }

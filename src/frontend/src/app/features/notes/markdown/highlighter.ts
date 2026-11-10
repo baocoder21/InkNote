@@ -1,7 +1,17 @@
-import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
+import { createCssVariablesTheme, createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 
-export const CODE_THEME = 'github-light';
+// A "CSS variables" theme: instead of fixed colors, Shiki writes color: var(--ink-code-token-keyword)
+// and so on. The variables are defined per theme in styles/_tokens.scss, so code blocks follow
+// the current theme (light / dark / warm) without being rendered again.
+const inkTheme = createCssVariablesTheme({
+  name: 'ink',
+  variablePrefix: '--ink-code-',
+  variableDefaults: {},
+  fontStyle: true,
+});
+
+export const CODE_THEME = 'ink';
 
 let highlighter: Promise<HighlighterCore> | null = null;
 
@@ -12,7 +22,7 @@ let highlighter: Promise<HighlighterCore> | null = null;
  */
 export function getHighlighter(): Promise<HighlighterCore> {
   highlighter ??= createHighlighterCore({
-    themes: [import('shiki/themes/github-light.mjs')],
+    themes: [inkTheme],
     langs: [
       import('shiki/langs/bash.mjs'),
       import('shiki/langs/csharp.mjs'),

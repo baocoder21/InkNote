@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -17,17 +16,16 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { NzAlertComponent } from 'ng-zorro-antd/alert';
 import { NzButtonComponent } from 'ng-zorro-antd/button';
-import { NzIconDirective } from 'ng-zorro-antd/icon';
-import { NzInputDirective } from 'ng-zorro-antd/input';
 import { NzMessageService } from 'ng-zorro-antd/message';
-import { NzModalService } from 'ng-zorro-antd/modal';
 import { NzSegmentedComponent } from 'ng-zorro-antd/segmented';
 import { NzSpinComponent } from 'ng-zorro-antd/spin';
 import { debounceTime, exhaustMap, filter, from } from 'rxjs';
-import { NOTE_LIMITS } from '../../models/note.model';
+import { NOTE_LIMITS, NoteOrganization } from '../../models/note.model';
 import { NotesStore } from '../../store/notes.store';
+import { OrganizationStore } from '../../store/organization.store';
 import { MarkdownEditorComponent } from '../markdown-editor/markdown-editor.component';
 import { MarkdownPreviewComponent } from '../markdown-preview/markdown-preview.component';
+import { NoteOrganizationComponent } from '../note-organization/note-organization.component';
 
 /**
  * Save automatically this long (ms) after the user stops typing.
@@ -44,15 +42,13 @@ type ViewMode = 'edit' | 'split' | 'preview';
   selector: 'app-note-editor',
   imports: [
     FormsModule,
-    DatePipe,
     NzAlertComponent,
     NzButtonComponent,
-    NzIconDirective,
-    NzInputDirective,
     NzSegmentedComponent,
     NzSpinComponent,
     MarkdownEditorComponent,
     MarkdownPreviewComponent,
+    NoteOrganizationComponent,
   ],
   templateUrl: './note-editor.component.html',
   styleUrl: './note-editor.component.scss',
@@ -69,15 +65,37 @@ export class NoteEditorComponent {
   readonly id = input.required<string>();
 
   protected readonly store = inject(NotesStore);
+  // Only READ here (notebook and tag choices); the notes page is the one that loads it.
+  protected readonly org = inject(OrganizationStore);
   private readonly router = inject(Router);
   private readonly message = inject(NzMessageService);
-  private readonly modal = inject(NzModalService);
   private readonly autosaveDelay = inject(AUTOSAVE_DELAY_MS);
 
-  // The text being typed. linkedSignal = a writable signal that is reset to the server's
-  // value whenever store.selected() changes (new note opened, or saved successfully).
-  protected readonly title = linkedSignal(() => this.store.selected()?.title ?? '');
-  protected readonly content = linkedSignal(() => this.store.selected()?.content ?? '');
+  // The last SAVED text of the open note. `equal` makes this computed return "no change" when
+  // only the organization changed (pin, notebook, tags, version): those updates replace
+  // store.selected() but must not touch what the user is typing. A content save always changes
+  // updatedAt, so it still counts as a change (this matters when the server trims the title:
+  // the text is the same as before, but the box must be reset to the trimmed value).
+  private readonly savedText = computed(
+    () => {
+      const note = this.store.selected();
+      return note
+        ? { id: note.id, title: note.title, content: note.content, updatedAt: note.updatedAt }
+        : null;
+    },
+    {
+      equal: (a, b) =>
+        a?.id === b?.id &&
+        a?.title === b?.title &&
+        a?.content === b?.content &&
+        a?.updatedAt === b?.updatedAt,
+    },
+  );
+
+  // The text being typed. linkedSignal = a writable signal that is reset to the saved
+  // text whenever savedText() changes (new note opened, or saved successfully).
+  protected readonly title = linkedSignal(() => this.savedText()?.title ?? '');
+  protected readonly content = linkedSignal(() => this.savedText()?.content ?? '');
 
   protected readonly viewMode = signal<ViewMode>('split');
   protected readonly viewOptions = [
@@ -93,6 +111,8 @@ export class NoteEditorComponent {
 
   protected readonly tooLong = computed(() => this.content().length > NOTE_LIMITS.contentMaxLength);
 
+  // There is no Save button: notes save by themselves (autosave) and with Ctrl+S.
+  // This says whether a save would be accepted right now.
   protected readonly canSave = computed(
     () =>
       this.isDirty() &&
@@ -150,7 +170,7 @@ export class NoteEditorComponent {
     const result = await this.store.loadNote(id);
     if (result === 'not-found') {
       this.message.warning('Note not found');
-      await this.router.navigate(['/notes']);
+      await this.leave();
     } else if (result === 'error') {
       this.message.error('Cannot load the note');
     }
@@ -182,7 +202,7 @@ export class NoteEditorComponent {
     }
   }
 
-  /** Manual save (button / Ctrl+S): shows a "Saved" message. */
+  /** Manual save (Ctrl+S): shows a "Saved" message. */
   protected save(): Promise<void> {
     return this.persist(false);
   }
@@ -206,32 +226,39 @@ export class NoteEditorComponent {
         break;
       case 'not-found':
         this.message.warning('This note no longer exists');
-        await this.router.navigate(['/notes']);
+        await this.leave();
         break;
       default:
         this.message.error('Cannot save the note');
     }
   }
 
-  protected confirmDelete(): void {
-    this.modal.confirm({
-      nzTitle: 'Delete note',
-      nzContent: 'Delete this note? It will disappear from your list.',
-      nzOkText: 'Delete',
-      nzOkDanger: true,
-      nzCancelText: 'Cancel',
-      // Returning a Promise keeps the OK button in a loading state until it finishes.
-      nzOnOk: () => this.delete(),
-    });
-  }
-
-  private async delete(): Promise<void> {
-    const ok = await this.store.deleteNote(this.id());
-    if (ok) {
-      this.message.success('Note deleted', { nzDuration: 1500 });
-      await this.router.navigate(['/notes']);
-    } else {
-      this.message.error('Cannot delete the note');
+  /** The user changed the notebook, the pin or the tags (not the text). */
+  protected async changeOrganization(change: NoteOrganization): Promise<void> {
+    const result = await this.store.updateOrganization(this.id(), change);
+    switch (result) {
+      case 'ok':
+        break;
+      case 'conflict':
+        this.conflict.set(true); // same banner as a content conflict: reload to get the latest
+        break;
+      case 'not-found':
+        this.message.warning('This note no longer exists');
+        await this.leave();
+        break;
+      case 'invalid':
+        // A notebook or tag was deleted elsewhere: refresh the choices so the pickers are right.
+        this.message.warning('The notebook or a tag no longer exists. The lists were refreshed.');
+        void this.org.load();
+        break;
+      default:
+        this.message.error('Cannot update the note');
     }
   }
+
+  /** Back to the empty pane, keeping the current notebook/tag filter in the URL. */
+  private leave(): Promise<boolean> {
+    return this.router.navigate(['/notes'], { queryParamsHandling: 'preserve' });
+  }
+
 }

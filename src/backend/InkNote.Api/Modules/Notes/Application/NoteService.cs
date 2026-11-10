@@ -1,40 +1,86 @@
+using InkNote.Api.Modules.Notebooks.Contracts;
+using InkNote.Api.Modules.Notes.Contracts;
 using InkNote.Api.Modules.Notes.Domain;
+using InkNote.Api.Modules.Tags.Contracts;
 using InkNote.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace InkNote.Api.Modules.Notes.Application;
 
-public enum UpdateNoteStatus { Updated, NotFound, Conflict }
+public enum UpdateNoteStatus { Updated, NotFound, Conflict, InvalidReference }
 
-public sealed record UpdateNoteResult(UpdateNoteStatus Status, NoteDto? Note = null);
+// ErrorField/ErrorMessage are set only for InvalidReference (e.g. a notebook id that does not exist).
+public sealed record UpdateNoteResult(
+    UpdateNoteStatus Status,
+    NoteDto? Note = null,
+    string? ErrorField = null,
+    string? ErrorMessage = null);
 
-/// <summary>Use cases for notes. Endpoints stay thin and delegate here.</summary>
-public sealed class NoteService(AppDbContext db, TimeProvider clock)
+// Note is null when a referenced notebook does not exist (then ErrorField/ErrorMessage are set).
+public sealed record CreateNoteResult(NoteDto? Note, string? ErrorField = null, string? ErrorMessage = null);
+
+/// <summary>
+/// Use cases for notes. Endpoints stay thin and delegate here. Notebooks and tags belong to
+/// other modules, so we only talk to them through their small contracts.
+/// </summary>
+public sealed class NoteService(
+    AppDbContext db,
+    INotebookLookup notebooks,
+    ITagLookup tags,
+    TimeProvider clock)
 {
-    public async Task<IReadOnlyList<NoteSummaryDto>> ListAsync(CancellationToken ct) =>
-        await db.Notes
-            .AsNoTracking() // read-only query: EF does not need to track changes
-            .OrderByDescending(n => n.UpdatedAt)
-            .Select(n => new NoteSummaryDto(n.Id, n.Title, n.UpdatedAt, n.Version))
+    private const string NotebookNotFound = "The notebook does not exist.";
+    private const string TagNotFound = "One or more tags do not exist.";
+
+    /// <param name="notebookId">When set, only notes in this notebook.</param>
+    /// <param name="tagId">When set, only notes that have this tag.</param>
+    public async Task<IReadOnlyList<NoteSummaryDto>> ListAsync(Guid? notebookId, Guid? tagId, CancellationToken ct)
+    {
+        var query = db.Notes.AsNoTracking(); // read-only query: EF does not need to track changes
+
+        if (notebookId is { } nb)
+        {
+            query = query.Where(n => n.NotebookId == nb);
+        }
+
+        if (tagId is { } tag)
+        {
+            // Becomes "WHERE EXISTS (SELECT 1 FROM note_tags WHERE note_id = n.id AND tag_id = @tag)".
+            query = query.Where(n => n.Tags.Any(t => t.TagId == tag));
+        }
+
+        return await query
+            .OrderByDescending(n => n.IsPinned) // pinned notes first...
+            .ThenByDescending(n => n.UpdatedAt) // ...then most recently edited
+            .Select(n => new NoteSummaryDto(
+                n.Id, n.Title, n.UpdatedAt, n.Version, n.NotebookId, n.IsPinned, n.Status,
+                n.Tags.Select(t => t.TagId).ToList()))
             .ToListAsync(ct);
+    }
 
     public async Task<NoteDto?> GetAsync(Guid id, CancellationToken ct)
     {
-        var note = await db.Notes.AsNoTracking().FirstOrDefaultAsync(n => n.Id == id, ct);
+        var note = await db.Notes.AsNoTracking().Include(n => n.Tags).FirstOrDefaultAsync(n => n.Id == id, ct);
         return note is null ? null : NoteDto.From(note);
     }
 
-    public async Task<NoteDto> CreateAsync(CreateNoteRequest request, CancellationToken ct)
+    public async Task<CreateNoteResult> CreateAsync(CreateNoteRequest request, CancellationToken ct)
     {
-        var note = Note.Create(request.Title, request.Content, clock.GetUtcNow());
+        if (request.NotebookId is { } nb && !await notebooks.ExistsAsync(nb, ct))
+        {
+            return new CreateNoteResult(null, "notebookId", NotebookNotFound);
+        }
+
+        var note = Note.Create(request.Title, request.Content, request.NotebookId, clock.GetUtcNow());
         db.Notes.Add(note);
         await db.SaveChangesAsync(ct);
-        return NoteDto.From(note);
+        return new CreateNoteResult(NoteDto.From(note));
     }
 
     public async Task<UpdateNoteResult> UpdateAsync(Guid id, UpdateNoteRequest request, CancellationToken ct)
     {
-        var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == id, ct);
+        // Include(Tags): the response contains the tag ids, so they must be loaded.
+        var note = await db.Notes.Include(n => n.Tags).FirstOrDefaultAsync(n => n.Id == id, ct);
         if (note is null)
         {
             return new UpdateNoteResult(UpdateNoteStatus.NotFound);
@@ -48,14 +94,45 @@ public sealed class NoteService(AppDbContext db, TimeProvider clock)
 
         note.Update(request.Title, request.Content, clock.GetUtcNow());
 
-        try
+        if (!await TrySaveAsync(ct))
         {
-            await db.SaveChangesAsync(ct);
+            return new UpdateNoteResult(UpdateNoteStatus.Conflict);
         }
-        catch (DbUpdateConcurrencyException)
+
+        return new UpdateNoteResult(UpdateNoteStatus.Updated, NoteDto.From(note));
+    }
+
+    public async Task<UpdateNoteResult> UpdateOrganizationAsync(
+        Guid id, UpdateNoteOrganizationRequest request, CancellationToken ct)
+    {
+        var note = await db.Notes.Include(n => n.Tags).FirstOrDefaultAsync(n => n.Id == id, ct);
+        if (note is null)
         {
-            // Safety net: someone saved between our read and our write. Version is a
-            // concurrency token, so the UPDATE matched 0 rows and EF threw.
+            return new UpdateNoteResult(UpdateNoteStatus.NotFound);
+        }
+
+        if (note.Version != request.Version)
+        {
+            return new UpdateNoteResult(UpdateNoteStatus.Conflict);
+        }
+
+        // Check references through the other modules' contracts: a clear 400 beats a raw
+        // foreign-key error from the database.
+        if (request.NotebookId is { } nb && !await notebooks.ExistsAsync(nb, ct))
+        {
+            return new UpdateNoteResult(UpdateNoteStatus.InvalidReference, ErrorField: "notebookId", ErrorMessage: NotebookNotFound);
+        }
+
+        var tagIds = request.TagIds.Distinct().ToList(); // the same tag twice is not an error
+        if (tagIds.Count > 0 && await tags.CountExistingAsync(tagIds, ct) != tagIds.Count)
+        {
+            return new UpdateNoteResult(UpdateNoteStatus.InvalidReference, ErrorField: "tagIds", ErrorMessage: TagNotFound);
+        }
+
+        note.SetOrganization(request.NotebookId, request.IsPinned, request.Status, tagIds);
+
+        if (!await TrySaveAsync(ct))
+        {
             return new UpdateNoteResult(UpdateNoteStatus.Conflict);
         }
 
@@ -75,4 +152,27 @@ public sealed class NoteService(AppDbContext db, TimeProvider clock)
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    // Safety net for concurrent edits: Version is a concurrency token, so if another request
+    // saved first, our UPDATE matched 0 rows and EF throws DbUpdateConcurrencyException.
+    private async Task<bool> TrySaveAsync(CancellationToken ct)
+    {
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>What the Notebooks module may ask: is anything stored in this notebook?</summary>
+internal sealed class NotebookUsage(AppDbContext db) : INotebookUsage
+{
+    // The soft-delete filter on Notes applies here: deleted notes do not block deleting a notebook.
+    public Task<bool> HasNotesAsync(Guid notebookId, CancellationToken ct) =>
+        db.Notes.AnyAsync(n => n.NotebookId == notebookId, ct);
 }

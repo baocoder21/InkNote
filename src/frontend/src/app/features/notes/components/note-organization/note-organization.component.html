@@ -1,0 +1,60 @@
+<div class="org">
+  <button
+    nz-button
+    nzType="text"
+    class="pin-btn"
+    [attr.aria-label]="isPinned() ? 'Unpin note' : 'Pin note'"
+    [attr.aria-pressed]="isPinned()"
+    [disabled]="disabled()"
+    (click)="togglePin()"
+  >
+    <nz-icon nzType="pushpin" [nzTheme]="isPinned() ? 'fill' : 'outline'" />
+  </button>
+
+  <!-- nzShowSearch: type to filter the list (matches the label, i.e. the full "Parent / Child" path). -->
+  <nz-select
+    class="org__notebook"
+    aria-label="Notebook"
+    nzShowSearch
+    nzAllowClear
+    nzPlaceHolder="Search notebook..."
+    nzNotFoundContent="No notebook found"
+    [nzDisabled]="disabled()"
+    [ngModel]="notebookId()"
+    (ngModelChange)="setNotebook($event)"
+  >
+    @for (option of notebooks(); track option.notebook.id) {
+      <nz-option [nzValue]="option.notebook.id" [nzLabel]="option.path" />
+    }
+  </nz-select>
+
+  <nz-select
+    class="org__status"
+    aria-label="Status"
+    [nzDisabled]="disabled()"
+    [ngModel]="status()"
+    (ngModelChange)="setStatus($event)"
+  >
+    @for (option of statusOptions; track option.value) {
+      <nz-option [nzValue]="option.value" [nzLabel]="option.label" />
+    }
+  </nz-select>
+
+  <!-- Multiple mode already has a search box inside; nzMaxTagCount keeps the picker on ONE line
+       ("+ 3 ..." when more tags are chosen) so it can stay small. -->
+  <nz-select
+    class="org__tags"
+    aria-label="Tags"
+    nzMode="multiple"
+    nzPlaceHolder="Search tags..."
+    nzNotFoundContent="No tag found"
+    [nzMaxTagCount]="1"
+    [nzDisabled]="disabled()"
+    [ngModel]="shownTagIds()"
+    (ngModelChange)="setTags($event)"
+  >
+    @for (tag of tags(); track tag.id) {
+      <nz-option [nzValue]="tag.id" [nzLabel]="tag.name" />
+    }
+  </nz-select>
+</div>

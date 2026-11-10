@@ -16,6 +16,10 @@ const NOTE: Note = {
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   version: 1,
+  notebookId: null,
+  isPinned: false,
+  status: 'None',
+  tagIds: [],
 };
 
 // Tests that are NOT about autosave use a delay so long that autosave can never interfere.
@@ -62,7 +66,11 @@ async function setup(autosaveDelay: number) {
     el,
     settle,
     titleInput: () => el().querySelector<HTMLInputElement>('input')!,
-    saveButton: () => el().querySelector<HTMLButtonElement>('button.save-btn')!,
+    pinButton: () => el().querySelector<HTMLButtonElement>('button.pin-btn')!,
+    // There is no Save button any more: Ctrl+S inside the editor saves.
+    pressCtrlS() {
+      el().dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }));
+    },
     typeTitle(text: string) {
       const input = el().querySelector<HTMLInputElement>('input')!;
       input.value = text;
@@ -80,22 +88,23 @@ describe('NoteEditorComponent', () => {
 
   afterEach(() => t.http.verify());
 
-  it('shows the loaded note in the Markdown editor and keeps Save disabled until something changes', () => {
+  it('shows the loaded note in the Markdown editor, with nothing unsaved and no Save or delete button', () => {
     expect(t.titleInput().value).toBe('Hello');
     expect(t.el().querySelector('.cm-content')?.textContent).toContain('# Body');
-    expect(t.saveButton().disabled).toBe(true);
-    expect(t.el().textContent).not.toContain('Unsaved changes');
-    expect(t.el().textContent).toContain('All changes saved');
+    // No status line at the bottom ("All changes saved · Updated ... · Version n"): removed on purpose.
+    expect(t.el().querySelector('.meta')).toBeNull();
+    expect(t.el().textContent).not.toContain('All changes saved');
+    expect(t.el().textContent).not.toContain('Version');
+    // Notes save by themselves and with Ctrl+S; deleting is done from the sidebar menu.
+    expect(t.el().querySelector('button.save-btn')).toBeNull();
+    expect(t.el().querySelector('[aria-label="Delete note"]')).toBeNull();
   });
 
-  it('enables Save after typing and sends the edited text with the current version', async () => {
+  it('Ctrl+S sends the edited text with the current version', async () => {
     t.typeTitle('Hello, edited');
     await t.settle();
 
-    expect(t.saveButton().disabled).toBe(false);
-    expect(t.el().textContent).toContain('Unsaved changes');
-
-    t.saveButton().click();
+    t.pressCtrlS();
     const request = t.http.expectOne(`${URL}/${NOTE.id}`);
     expect(request.request.method).toBe('PUT');
     expect(request.request.body).toEqual({
@@ -106,16 +115,16 @@ describe('NoteEditorComponent', () => {
     request.flush({ ...NOTE, title: 'Hello, edited', version: 2 });
     await t.settle();
 
-    // After a successful save the draft matches the server again.
-    expect(t.saveButton().disabled).toBe(true);
-    expect(t.el().textContent).toContain('Version 2');
+    // After a successful save the draft matches the server again (afterEach verifies that no
+    // further request is pending).
+    expect(t.titleInput().value).toBe('Hello, edited');
   });
 
   it('shows the conflict banner when the server answers 409', async () => {
     t.typeTitle('Mine');
     await t.settle();
 
-    t.saveButton().click();
+    t.pressCtrlS();
     t.http.expectOne(`${URL}/${NOTE.id}`).flush('', { status: 409, statusText: 'Conflict' });
     await t.settle();
 
@@ -123,6 +132,39 @@ describe('NoteEditorComponent', () => {
     expect(banner).not.toBeNull();
     expect(banner!.textContent).toContain('changed somewhere else');
     expect(t.titleInput().value).toBe('Mine'); // the user's text is not thrown away
+  });
+
+  it('pins the note without touching the text or the unsaved draft', async () => {
+    t.typeTitle('Draft not saved yet');
+    await t.settle();
+    expect(t.pinButton().getAttribute('aria-pressed')).toBe('false');
+
+    t.pinButton().click();
+    const request = t.http.expectOne(`${URL}/${NOTE.id}/organization`);
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({ notebookId: null, isPinned: true, status: 'None', tagIds: [], version: 1 });
+    // The server answers with the last SAVED text ("Hello"), not the draft.
+    request.flush({ ...NOTE, version: 2, isPinned: true });
+    await t.settle();
+
+    expect(t.pinButton().getAttribute('aria-pressed')).toBe('true');
+    expect(t.titleInput().value).toBe('Draft not saved yet'); // the draft survived
+
+    // ...and it is still waiting to be saved: Ctrl+S sends it, on top of the NEW version (2).
+    t.pressCtrlS();
+    const save = t.http.expectOne(`${URL}/${NOTE.id}`);
+    expect(save.request.body).toEqual({ title: 'Draft not saved yet', content: '# Body', version: 2 });
+    save.flush({ ...NOTE, title: 'Draft not saved yet', version: 3, isPinned: true });
+    await t.settle();
+  });
+
+  it('shows the conflict banner when the server rejects the organization change with 409', async () => {
+    t.pinButton().click();
+    t.http.expectOne(`${URL}/${NOTE.id}/organization`).flush('', { status: 409, statusText: 'Conflict' });
+    await t.settle();
+
+    expect(t.el().querySelector('.banner')).not.toBeNull();
+    expect(t.pinButton().getAttribute('aria-pressed')).toBe('false'); // nothing changed locally
   });
 
   it('saves the draft of the current note before opening another one', async () => {
@@ -168,8 +210,7 @@ describe('NoteEditorComponent autosave', () => {
     request.flush({ ...NOTE, title: 'Auto saved', version: 2 });
     await t.settle();
 
-    expect(t.el().textContent).toContain('Version 2');
-    expect(t.el().textContent).toContain('All changes saved');
+    expect(t.titleInput().value).toBe('Auto saved');
   });
 
   it('restarts the timer on every edit (only the last text is saved)', async () => {
@@ -192,7 +233,7 @@ describe('NoteEditorComponent autosave', () => {
   it('does not autosave while a version conflict is unresolved', async () => {
     t.typeTitle('Mine');
     await t.settle();
-    t.saveButton().click();
+    t.pressCtrlS();
     t.http.expectOne(`${URL}/${NOTE.id}`).flush('', { status: 409, statusText: 'Conflict' });
     await t.settle();
 

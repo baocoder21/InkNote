@@ -11,8 +11,8 @@
 | Nền tảng | 0 | Môi trường và khung dự án | [x] |
 | MVP | 1 | Backend cơ bản: API + PostgreSQL | [x] |
 | MVP | 2 | Frontend cơ bản: Angular + gọi API | [x] |
-| MVP | 3 | Editor Markdown và preview | [~] chờ bạn kiểm tra |
-| MVP | 4 | Notebook và Tag | [ ] |
+| MVP | 3 | Editor Markdown và preview | [x] |
+| MVP | 4 | Notebook và Tag | [~] chờ bạn kiểm tra |
 | MVP | 5 | Xác thực người dùng (Auth) | [ ] |
 | MVP | 6 | Tìm kiếm full-text | [ ] |
 | v1 | 7 | Local-first: lưu offline và hàng đợi đồng bộ | [ ] |

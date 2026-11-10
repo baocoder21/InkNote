@@ -23,15 +23,48 @@ public sealed class Note
     // Soft delete: the row stays, it is only hidden from normal queries.
     public bool IsDeleted { get; private set; }
 
-    public static Note Create(string title, string content, DateTimeOffset now) => new()
+    // Organization. NotebookId is a plain Guid: the Notebook entity belongs to another
+    // module, so there is no navigation property to it (the database still has a foreign key).
+    public Guid? NotebookId { get; private set; }
+    public bool IsPinned { get; private set; }
+    public NoteStatus Status { get; private set; } = NoteStatus.None;
+
+    // Many-to-many with tags through the NoteTag join rows. Exposed read-only so every
+    // change goes through SetOrganization(); EF fills the private list.
+    private readonly List<NoteTag> _tags = [];
+    public IReadOnlyCollection<NoteTag> Tags => _tags;
+
+    public static Note Create(string title, string content, Guid? notebookId, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(), // time-ordered Guid: friendlier to database indexes
         Title = title,
         Content = content,
+        NotebookId = notebookId,
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1,
     };
+
+    /// <summary>
+    /// Replaces notebook, pin state, status and the whole tag set. Bumps Version (so conflicts
+    /// are detected) but leaves UpdatedAt alone: "updated" means the content was edited, so
+    /// pinning a note does not make it jump around in a list sorted by date.
+    /// </summary>
+    public void SetOrganization(Guid? notebookId, bool isPinned, NoteStatus status, IEnumerable<Guid> tagIds)
+    {
+        NotebookId = notebookId;
+        IsPinned = isPinned;
+        Status = status;
+
+        var wanted = tagIds.ToHashSet();
+        _tags.RemoveAll(t => !wanted.Contains(t.TagId)); // EF deletes the orphaned join rows
+        foreach (var tagId in wanted.Except(_tags.Select(t => t.TagId)))
+        {
+            _tags.Add(new NoteTag(Id, tagId));
+        }
+
+        Version++;
+    }
 
     public void Update(string title, string content, DateTimeOffset now)
     {

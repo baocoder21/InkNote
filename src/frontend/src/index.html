@@ -2,10 +2,37 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Frontend</title>
+  <title>InkNote</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!--
+    Applies the saved theme BEFORE the app starts, so the page never flashes the wrong colors.
+    It sets <html data-theme="..."> (our design tokens) and loads the matching ng-zorro stylesheet
+    (dark build for "dark", the light build for "light" and "warm"). ThemeService does the same
+    later, when the user switches theme. Keep both in sync (names, storage key, file names).
+  -->
+  <script>
+    (function () {
+      var theme = 'dark';
+      try {
+        var saved = localStorage.getItem('inknote.theme');
+        if (saved === 'light' || saved === 'dark' || saved === 'warm') {
+          theme = saved;
+        }
+      } catch (e) {
+        /* storage blocked: use the default */
+      }
+      var file = theme === 'dark' ? 'dark' : 'variable';
+      document.documentElement.setAttribute('data-theme', theme);
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'themes/ng-zorro-antd.' + file + '.min.css';
+      link.setAttribute('data-zorro', file);
+      link.setAttribute('blocking', 'render'); // do not paint before it is loaded: no unstyled flash
+      document.head.appendChild(link);
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>

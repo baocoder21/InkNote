@@ -17,6 +17,22 @@ public sealed class CreateNoteRequestValidator : AbstractValidator<CreateNoteReq
     }
 }
 
+public static class NoteOrganizationLimits
+{
+    public const int MaxTagsPerNote = 20;
+}
+
+public sealed class UpdateNoteOrganizationRequestValidator : AbstractValidator<UpdateNoteOrganizationRequest>
+{
+    public UpdateNoteOrganizationRequestValidator()
+    {
+        RuleFor(x => x.Version).GreaterThanOrEqualTo(1);
+        RuleFor(x => x.Status).IsInEnum(); // a number outside the enum would otherwise be stored as-is
+        RuleFor(x => x.TagIds).NotNull().Must(ids => ids is null || ids.Count <= NoteOrganizationLimits.MaxTagsPerNote)
+            .WithMessage($"A note can have at most {NoteOrganizationLimits.MaxTagsPerNote} tags.");
+    }
+}
+
 public sealed class UpdateNoteRequestValidator : AbstractValidator<UpdateNoteRequest>
 {
     public UpdateNoteRequestValidator()

@@ -9,11 +9,12 @@ import {
   model,
   viewChild,
 } from '@angular/core';
-import { markdown } from '@codemirror/lang-markdown';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { EditorState } from '@codemirror/state';
 import { EditorView, placeholder } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
+import { inkEditorTheme } from './ink-editor-theme';
 
 /**
  * Angular wrapper around CodeMirror 6.
@@ -55,14 +56,14 @@ export class MarkdownEditorComponent {
           extensions: [
             basicSetup, // line numbers, history (undo/redo), search, bracket matching, ...
             // Markdown syntax + syntax coloring inside fenced code blocks (languages load lazily).
-            markdown({ codeLanguages: languages }),
+            // base: markdownLanguage = CommonMark PLUS GitHub-flavored Markdown (tables, ~~strikethrough~~,
+            // task lists), the same dialect as the preview. The default is plain CommonMark, which
+            // would not recognize those, so they would look unstyled while typing.
+            markdown({ base: markdownLanguage, codeLanguages: languages }),
             EditorView.lineWrapping,
             placeholder('Write Markdown here...'),
             EditorView.contentAttributes.of({ 'aria-label': 'Note content' }),
-            EditorView.theme({
-              '&': { height: '100%' },
-              '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, Consolas, monospace' },
-            }),
+            inkEditorTheme, // colors from the --ink-* variables of the current theme
             EditorView.updateListener.of((update) => {
               if (update.docChanged) {
                 this.value.set(update.state.doc.toString());

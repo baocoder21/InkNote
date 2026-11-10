@@ -3,30 +3,15 @@
   height: 100%;
 }
 
+// Two columns: the sidebar (folders, notes, tags) and the open note.
 .layout {
   display: grid;
-  grid-template-columns: 20rem 1fr;
+  grid-template-columns: 18rem minmax(0, 1fr);
   height: 100%;
 }
 
 .sidebar {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
   border-right: 1px solid var(--ink-border);
-
-  &__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--ink-border);
-  }
-
-  &__count {
-    color: var(--ink-text-muted);
-    font-size: 0.9rem;
-  }
 }
 
 .pane {

@@ -1,15 +1,5 @@
 <div class="layout">
-  <aside class="sidebar">
-    <div class="sidebar__header">
-      <span class="sidebar__count">{{ store.count() }} {{ store.count() === 1 ? 'note' : 'notes' }}</span>
-      <button nz-button nzType="primary" nzSize="small" (click)="createNote()">
-        <nz-icon nzType="plus" nzTheme="outline" />
-        New note
-      </button>
-    </div>
-
-    <app-notes-list [notes]="store.notes()" [loading]="store.loadingList()" />
-  </aside>
+  <app-notes-sidebar class="sidebar" [tagId]="tag() ?? null" />
 
   <section class="pane">
     <router-outlet />

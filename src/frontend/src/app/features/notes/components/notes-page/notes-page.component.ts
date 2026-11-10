@@ -1,44 +1,42 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
-import { NzButtonComponent } from 'ng-zorro-antd/button';
-import { NzIconDirective } from 'ng-zorro-antd/icon';
+import { ChangeDetectionStrategy, Component, OnInit, inject, input } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NotesStore } from '../../store/notes.store';
-import { NotesListComponent } from '../notes-list/notes-list.component';
+import { OrganizationStore } from '../../store/organization.store';
+import { NotesSidebarComponent } from '../notes-sidebar/notes-sidebar.component';
 
 /**
- * "Container" component: owns the layout and talks to the store.
- * The list and the editor are separate components that show the data.
+ * "Container" component: the layout (sidebar | open note) and the initial loading.
+ *
+ * The tag filter lives in the URL: /notes?tag=<id>. Angular copies query parameters into inputs
+ * with the same name (withComponentInputBinding), so reloading the page or sharing the link
+ * keeps the filter, and the Back button steps through filters.
  */
 @Component({
   selector: 'app-notes-page',
-  imports: [RouterOutlet, NzButtonComponent, NzIconDirective, NotesListComponent],
+  imports: [RouterOutlet, NotesSidebarComponent],
   templateUrl: './notes-page.component.html',
   styleUrl: './notes-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NotesPageComponent implements OnInit {
-  protected readonly store = inject(NotesStore);
-  private readonly router = inject(Router);
+  readonly tag = input<string>(); // ?tag=...
+
+  private readonly store = inject(NotesStore);
+  private readonly org = inject(OrganizationStore);
   private readonly message = inject(NzMessageService);
 
   ngOnInit(): void {
-    void this.loadList();
+    void this.load();
   }
 
-  private async loadList(): Promise<void> {
-    const ok = await this.store.loadNotes();
-    if (!ok) {
+  private async load(): Promise<void> {
+    // Both start now and run in parallel.
+    const [notesOk, orgOk] = await Promise.all([this.store.loadNotes(), this.org.load()]);
+    if (!notesOk) {
       this.message.error('Cannot load notes. Is the backend running on port 5032?');
-    }
-  }
-
-  protected async createNote(): Promise<void> {
-    const note = await this.store.createNote();
-    if (note) {
-      await this.router.navigate(['/notes', note.id]);
-    } else {
-      this.message.error('Cannot create the note');
+    } else if (!orgOk) {
+      this.message.error('Cannot load folders and tags');
     }
   }
 }

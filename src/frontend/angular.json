@@ -36,10 +36,19 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "ng-zorro-antd.dark.min.css",
+                "input": "node_modules/ng-zorro-antd",
+                "output": "/themes"
+              },
+              {
+                "glob": "ng-zorro-antd.variable.min.css",
+                "input": "node_modules/ng-zorro-antd",
+                "output": "/themes"
               }
             ],
             "styles": [
-              "node_modules/ng-zorro-antd/ng-zorro-antd.variable.min.css",
               "node_modules/katex/dist/katex.min.css",
               "src/styles.scss"
             ]
@@ -58,7 +67,15 @@
                   "maximumError": "8kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "fonts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                }
+              }
             },
             "development": {
               "optimization": false,

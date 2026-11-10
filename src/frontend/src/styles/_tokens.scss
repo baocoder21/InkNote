@@ -1,14 +1,170 @@
 // Design tokens: the only place where raw colors live. Components use var(--ink-*).
-// ng-zorro 22 does not expose CSS variables for neutral colors, so we define our own;
-// the primary/warning colors still come from ng-zorro's variable build (--ant-*).
+//
+// Three themes, chosen with <html data-theme="light|dark|warm"> (see core/theme.service.ts):
+//   dark  - Nord:            background #2e3440, text #d8dee9
+//   warm  - Kanagawa Lotus:  background #f1e9d2, text #4d699b
+//   light - paper gray:      background #edeeec, text #dc347f
+// The background and text colors are the user's choice; every other color (surfaces, lines,
+// accents, the Markdown "special characters", code colors) was picked to be readable on them
+// (contrast ratios were checked, see docs/LEARNING.md). A new token must be defined in ALL
+// three blocks.
+//
+// Groups:
+//   --ink-bg*, --ink-border*, --ink-text*, --ink-bg-hover/-selected, --ink-accent, --ink-danger
+//   --ink-heading, --ink-link            : preview
+//   --ink-syn-*                          : colors of the editor's Markdown syntax and of code
+
+// ---- Dark: Nord ----
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark; // native scrollbars, inputs and the like follow the theme
+
+  --ink-bg-sidebar: #272c36;
+  --ink-bg: #2e3440;
+  --ink-bg-elevated: #3b4252; // inputs, menus
+  --ink-bg-code: #292e39; // code blocks, inline code, table headers
+
+  --ink-border: #3b4252;
+  --ink-border-strong: #4c566a;
+
+  --ink-text: #d8dee9;
+  --ink-text-muted: #98a3b8;
+
+  --ink-bg-hover: rgba(216, 222, 233, 0.07);
+  --ink-bg-selected: rgba(136, 192, 208, 0.2);
+  --ink-text-selected: #88c0d0;
+  --ink-accent: #88c0d0;
+  --ink-on-accent: #2e3440; // text on an accent-colored button
+  --ink-danger: #e5848d;
+
+  --ink-heading: #88c0d0;
+  --ink-link: #88a9ca;
+
+  // Markdown "special characters" (# * ` > - [ ] ( )) are yellow: visible but not loud.
+  --ink-syn-heading: #88c0d0;
+  --ink-syn-mark: #ebcb8b;
+  --ink-syn-strong: #eceff4;
+  --ink-syn-emphasis: #c39dbc;
+  --ink-syn-link: #88a9ca;
+  --ink-syn-url: #8fbcbb;
+  --ink-syn-code: #a3be8c;
+  --ink-syn-quote: #98a3b8;
+  --ink-syn-plain: #d8dee9;
+  --ink-syn-keyword: #88a9ca;
+  --ink-syn-string: #a3be8c;
+  --ink-syn-number: #c39dbc;
+  --ink-syn-comment: #8893aa;
+  --ink-syn-function: #88c0d0;
+  --ink-syn-property: #8fbcbb;
+  --ink-syn-type: #8fbcbb;
+  --ink-syn-punct: #9aa5b8;
+}
+
+// ---- Warm: Kanagawa Lotus ----
+:root[data-theme='warm'] {
+  color-scheme: light;
+
+  --ink-bg-sidebar: #e8dfc3;
+  --ink-bg: #f1e9d2;
+  --ink-bg-elevated: #f8f2e0;
+  --ink-bg-code: #e9e0c6;
+
+  --ink-border: #dcd2b4;
+  --ink-border-strong: #c9bd98;
+
+  --ink-text: #4d699b;
+  --ink-text-muted: #655f84;
+
+  --ink-bg-hover: rgba(77, 105, 155, 0.08);
+  --ink-bg-selected: rgba(168, 70, 107, 0.14);
+  --ink-text-selected: #a8466b;
+  --ink-accent: #a8466b;
+  --ink-on-accent: #ffffff;
+  --ink-danger: #b8303f;
+
+  --ink-heading: #624c83;
+  --ink-link: #2b6985;
+
+  --ink-syn-heading: #624c83;
+  --ink-syn-mark: #a24b00;
+  --ink-syn-strong: #3d3d68;
+  --ink-syn-emphasis: #7a4a78;
+  --ink-syn-link: #2b6985;
+  --ink-syn-url: #3d6c61;
+  --ink-syn-code: #4e6a31;
+  --ink-syn-quote: #655f84;
+  --ink-syn-plain: #3d3d68;
+  --ink-syn-keyword: #624c83;
+  --ink-syn-string: #4e6a31;
+  --ink-syn-number: #a24b00;
+  --ink-syn-comment: #726f8d;
+  --ink-syn-function: #2b6985;
+  --ink-syn-property: #3d6c61;
+  --ink-syn-type: #6b5c22;
+  --ink-syn-punct: #5f5f78;
+}
+
+// ---- Light ----
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ink-bg-sidebar: #e3e4e1;
+  --ink-bg: #edeeec;
+  --ink-bg-elevated: #f6f6f5;
+  --ink-bg-code: #e4e5e2;
+
+  --ink-border: #d3d4d1;
+  --ink-border-strong: #bcbeba;
+
+  --ink-text: #dc347f;
+  --ink-text-muted: #62666d;
+
+  --ink-bg-hover: rgba(0, 0, 0, 0.05);
+  --ink-bg-selected: rgba(27, 101, 168, 0.14);
+  --ink-text-selected: #1b65a8;
+  --ink-accent: #1b65a8;
+  --ink-on-accent: #ffffff;
+  --ink-danger: #c0262d;
+
+  --ink-heading: #a31f55;
+  --ink-link: #1b65a8;
+
+  --ink-syn-heading: #a31f55;
+  --ink-syn-mark: #1b65a8;
+  --ink-syn-strong: #8f1747;
+  --ink-syn-emphasis: #7a4fb5;
+  --ink-syn-link: #1b65a8;
+  --ink-syn-url: #0a6b79;
+  --ink-syn-code: #276c3f;
+  --ink-syn-quote: #62666d;
+  --ink-syn-plain: #3a3f46; // code text: neutral, the pink is for the note's own text
+  --ink-syn-keyword: #7a4fb5;
+  --ink-syn-string: #276c3f;
+  --ink-syn-number: #a04708;
+  --ink-syn-comment: #747880;
+  --ink-syn-function: #1b65a8;
+  --ink-syn-property: #0a6b79;
+  --ink-syn-type: #a04708;
+  --ink-syn-punct: #62666d;
+}
+
+// ---- Shared by all themes ----
+// Shiki (code blocks in the preview) uses a "CSS variables" theme: it writes
+// color: var(--ink-code-token-keyword) and so on, and these lines point those names at the
+// --ink-syn-* colors of the current theme. Switching theme therefore recolors code instantly.
 :root {
-  --ink-bg: #ffffff;
-  --ink-text: rgba(0, 0, 0, 0.88);
-  --ink-text-muted: rgba(0, 0, 0, 0.45);
-  --ink-border: #f0f0f0;
-  --ink-bg-hover: rgba(0, 0, 0, 0.04);
-  --ink-bg-selected: var(--ant-primary-1, #e6f4ff);
-  --ink-text-selected: var(--ant-primary-color, #1677ff);
-  --ink-bg-code: #f6f8fa;
-  --ink-border-strong: #d9d9d9;
+  --ink-code-foreground: var(--ink-syn-plain);
+  --ink-code-background: var(--ink-bg-code);
+  --ink-code-token-constant: var(--ink-syn-number);
+  --ink-code-token-string: var(--ink-syn-string);
+  --ink-code-token-comment: var(--ink-syn-comment);
+  --ink-code-token-keyword: var(--ink-syn-keyword);
+  --ink-code-token-parameter: var(--ink-syn-plain);
+  --ink-code-token-function: var(--ink-syn-function);
+  --ink-code-token-string-expression: var(--ink-syn-string);
+  --ink-code-token-punctuation: var(--ink-syn-punct);
+  --ink-code-token-link: var(--ink-syn-url);
+  --ink-code-token-inserted: var(--ink-syn-string);
+  --ink-code-token-deleted: var(--ink-danger);
+  --ink-code-token-changed: var(--ink-syn-number);
 }

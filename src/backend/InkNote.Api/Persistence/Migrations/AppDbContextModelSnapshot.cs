@@ -22,6 +22,40 @@ namespace InkNote.Api.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("InkNote.Api.Modules.Notebooks.Domain.Notebook", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notebooks");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("ix_notebooks_parent_id");
+
+                    b.ToTable("notebooks", (string)null);
+                });
+
             modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.Note", b =>
                 {
                     b.Property<Guid>("Id")
@@ -42,6 +76,22 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_pinned");
+
+                    b.Property<Guid?>("NotebookId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("notebook_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("None")
+                        .HasColumnName("status");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -60,10 +110,105 @@ namespace InkNote.Api.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_notes");
 
+                    b.HasIndex("NotebookId")
+                        .HasDatabaseName("ix_notes_notebook_id");
+
                     b.HasIndex("UpdatedAt")
                         .HasDatabaseName("ix_notes_updated_at");
 
                     b.ToTable("notes", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.NoteTag", b =>
+                {
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("note_id");
+
+                    b.Property<Guid>("TagId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tag_id");
+
+                    b.HasKey("NoteId", "TagId")
+                        .HasName("pk_note_tags");
+
+                    b.HasIndex("TagId")
+                        .HasDatabaseName("ix_note_tags_tag_id");
+
+                    b.ToTable("note_tags", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Tags.Domain.Tag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("normalized_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tags");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tags_normalized_name");
+
+                    b.ToTable("tags", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Notebooks.Domain.Notebook", b =>
+                {
+                    b.HasOne("InkNote.Api.Modules.Notebooks.Domain.Notebook", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_notebooks_notebooks_parent_id");
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.Note", b =>
+                {
+                    b.HasOne("InkNote.Api.Modules.Notebooks.Domain.Notebook", null)
+                        .WithMany()
+                        .HasForeignKey("NotebookId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_notes_notebooks_notebook_id");
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.NoteTag", b =>
+                {
+                    b.HasOne("InkNote.Api.Modules.Notes.Domain.Note", null)
+                        .WithMany("Tags")
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_note_tags_notes_note_id");
+
+                    b.HasOne("InkNote.Api.Modules.Tags.Domain.Tag", null)
+                        .WithMany()
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_note_tags_tags_tag_id");
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.Note", b =>
+                {
+                    b.Navigation("Tags");
                 });
 #pragma warning restore 612, 618
         }

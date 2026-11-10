@@ -1,5 +1,9 @@
+using InkNote.Api.Modules.Notebooks;
+using InkNote.Api.Modules.Notebooks.Api;
 using InkNote.Api.Modules.Notes;
 using InkNote.Api.Modules.Notes.Api;
+using InkNote.Api.Modules.Tags;
+using InkNote.Api.Modules.Tags.Api;
 using InkNote.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Register services in the dependency-injection (DI) container.
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails(); // errors are returned as standard ProblemDetails JSON
+builder.Services.AddExceptionHandler<InkNote.Api.Http.BadRequestExceptionHandler>(); // unreadable body -> 400, not 500
 builder.Services.AddSingleton(TimeProvider.System); // injectable clock (easy to fake in tests)
 
 // The connection string is read lazily (when the DbContext is first created) from
@@ -24,6 +29,8 @@ builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
 });
 
 builder.Services.AddNotesModule();
+builder.Services.AddNotebooksModule();
+builder.Services.AddTagsModule();
 
 // CORS: the browser blocks the Angular dev server (another origin) from calling
 // this API unless the API explicitly allows that origin.
@@ -63,6 +70,8 @@ app.MapGet("/api/health", () => Results.Ok(new
 .WithName("GetHealth");
 
 app.MapNotesEndpoints();
+app.MapNotebooksEndpoints();
+app.MapTagsEndpoints();
 
 app.Run();
 

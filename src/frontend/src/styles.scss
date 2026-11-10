@@ -1,4 +1,5 @@
-// Global styles. The ng-zorro and KaTeX stylesheets are added in angular.json ("styles").
+// Global styles. The ng-zorro (dark) and KaTeX stylesheets are added in angular.json ("styles").
 @use './styles/tokens';
 @use './styles/base';
 @use './styles/markdown';
+@use './styles/zorro-overrides';
