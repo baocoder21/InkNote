@@ -1,0 +1,14 @@
+// Design tokens: the only place where raw colors live. Components use var(--ink-*).
+// ng-zorro 22 does not expose CSS variables for neutral colors, so we define our own;
+// the primary/warning colors still come from ng-zorro's variable build (--ant-*).
+:root {
+  --ink-bg: #ffffff;
+  --ink-text: rgba(0, 0, 0, 0.88);
+  --ink-text-muted: rgba(0, 0, 0, 0.45);
+  --ink-border: #f0f0f0;
+  --ink-bg-hover: rgba(0, 0, 0, 0.04);
+  --ink-bg-selected: var(--ant-primary-1, #e6f4ff);
+  --ink-text-selected: var(--ant-primary-color, #1677ff);
+  --ink-bg-code: #f6f8fa;
+  --ink-border-strong: #d9d9d9;
+}

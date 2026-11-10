@@ -1,0 +1,18 @@
+@if (loading() && notes().length === 0) {
+  <div class="state">
+    <nz-spin nzSimple />
+  </div>
+} @else if (notes().length === 0) {
+  <p class="state">No notes yet. Create your first one.</p>
+} @else {
+  <ul class="list">
+    @for (note of notes(); track note.id) {
+      <li>
+        <a class="item" [routerLink]="['/notes', note.id]" routerLinkActive="item--active">
+          <span class="item__title">{{ note.title }}</span>
+          <span class="item__date">{{ note.updatedAt | date: 'medium' }}</span>
+        </a>
+      </li>
+    }
+  </ul>
+}

@@ -12,7 +12,7 @@
 
 ### Frontend
 - **Angular 22**, **SASS**.
-- UI: **ng-zorro**; nếu không tương thích với Angular 22 thì chuyển sang **PrimeNG** (bao gồm cả bộ icon PrimeIcons).
+- UI: **ng-zorro** (giấy phép MIT, tương thích Angular 22 đã kiểm tra ở Phase 2). PrimeNG 22 đã thử nhưng bỏ vì yêu cầu license key (xem docs/DECISIONS.md).
 - Editor: **CodeMirror 6**.
 - Render Markdown: **unified/remark** (GFM), **KaTeX** (công thức), **Mermaid** (sơ đồ), **Shiki** (highlight code).
 - Bảo mật khi render: **DOMPurify** để sanitize HTML.
@@ -27,7 +27,7 @@
 - **EF Core + Npgsql** truy cập PostgreSQL.
 - **SignalR**: đẩy thay đổi giữa các thiết bị/tab đang mở.
 - **ASP.NET Core Identity + JWT** (access token + refresh token), có thể thêm OAuth Google/GitHub.
-- **FluentValidation**, **ProblemDetails**, **OpenAPI** (Scalar hoặc Swagger), **Serilog**.
+- **FluentValidation**, **ProblemDetails**, **OpenAPI** (Swagger UI), **Serilog**.
 
 ### Database, cache, lưu trữ
 - **PostgreSQL thuần** (Docker khi phát triển).

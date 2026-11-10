@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-inknote_dev}
       POSTGRES_DB: ${POSTGRES_DB:-inknote}
     ports:
-      - "5432:5432"
+      # host:container. 5433 on the host because a local PostgreSQL service may already own 5432.
+      - "5433:5432"
     volumes:
       - inknote-db-data:/var/lib/postgresql/data
     healthcheck:

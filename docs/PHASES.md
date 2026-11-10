@@ -9,9 +9,9 @@
 | Giai đoạn | Phase | Nội dung | Trạng thái |
 |---|---|---|---|
 | Nền tảng | 0 | Môi trường và khung dự án | [x] |
-| MVP | 1 | Backend cơ bản: API + PostgreSQL | [ ] |
-| MVP | 2 | Frontend cơ bản: Angular + gọi API | [ ] |
-| MVP | 3 | Editor Markdown và preview | [ ] |
+| MVP | 1 | Backend cơ bản: API + PostgreSQL | [x] |
+| MVP | 2 | Frontend cơ bản: Angular + gọi API | [x] |
+| MVP | 3 | Editor Markdown và preview | [~] chờ bạn kiểm tra |
 | MVP | 4 | Notebook và Tag | [ ] |
 | MVP | 5 | Xác thực người dùng (Auth) | [ ] |
 | MVP | 6 | Tìm kiếm full-text | [ ] |
@@ -49,9 +49,9 @@ Thứ tự được sắp để **mỗi phase dựa trên phase trước và lu�
   - Entity `Note` (Id, Title, Content, CreatedAt, UpdatedAt, Version, IsDeleted).
   - DbContext, migration đầu tiên, connection string qua user-secrets.
   - Endpoints: tạo, lấy danh sách, lấy theo id, sửa, xóa mềm.
-  - FluentValidation, xử lý lỗi chuẩn, OpenAPI (Scalar/Swagger).
+  - FluentValidation, xử lý lỗi chuẩn, OpenAPI + Swagger UI.
   - Test đầu tiên với xUnit + Testcontainers.
-- **Kết quả:** Gọi API bằng Scalar/Swagger tạo và đọc được note, dữ liệu còn sau khi restart.
+- **Kết quả:** Gọi API bằng Swagger UI tạo và đọc được note, dữ liệu còn sau khi restart.
 - **Kiểm tra:** `dotnet test`, thao tác thủ công qua Swagger, xem bảng trong PostgreSQL.
 
 ## Phase 2 - Frontend cơ bản: Angular + gọi API
@@ -59,7 +59,7 @@ Thứ tự được sắp để **mỗi phase dựa trên phase trước và lu�
 - **Mục tiêu:** Giao diện danh sách note và form tạo/sửa/xóa, nối với API ở phase 1.
 - **Sẽ học:** Standalone component, routing và lazy loading, Signals, `HttpClient`, NgRx SignalStore, template syntax; chọn UI library.
 - **Việc làm:**
-  - Cài ng-zorro; nếu không tương thích Angular 22 thì chuyển PrimeNG (đây là lúc quyết định, ghi vào `DECISIONS.md`).
+  - Chọn thư viện UI: đã dùng ng-zorro (PrimeNG 22 bị loại vì yêu cầu license key; xem `DECISIONS.md`).
   - Layout cơ bản (sidebar + danh sách + khung nội dung).
   - `NotesStore` (SignalStore) + service gọi API.
   - Trang danh sách, tạo, sửa (textarea thường), xóa.

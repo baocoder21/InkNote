@@ -1,0 +1,78 @@
+@if (store.loadingSelected()) {
+  <div class="center">
+    <nz-spin nzSimple />
+  </div>
+} @else if (store.selected(); as note) {
+  <div class="editor">
+    @if (conflict()) {
+      <nz-alert
+        class="banner"
+        nzType="warning"
+        nzShowIcon
+        nzMessage="This note was changed somewhere else. Reload to get the latest version (your unsaved text will be replaced)."
+        [nzAction]="reloadAction"
+      />
+      <ng-template #reloadAction>
+        <button nz-button nzSize="small" (click)="reload()">Reload</button>
+      </ng-template>
+    }
+
+    <div class="bar">
+      <input
+        nz-input
+        class="bar__title"
+        placeholder="Title"
+        aria-label="Note title"
+        maxlength="200"
+        [(ngModel)]="title"
+      />
+      <nz-segmented class="bar__mode" [nzOptions]="viewOptions" [(ngModel)]="viewMode" />
+      <button
+        nz-button
+        nzType="primary"
+        class="save-btn"
+        [nzLoading]="store.saving()"
+        [disabled]="!canSave()"
+        (click)="save()"
+      >
+        <nz-icon nzType="save" nzTheme="outline" />
+        Save
+      </button>
+      <button
+        nz-button
+        nzType="text"
+        nzDanger
+        class="delete-btn"
+        aria-label="Delete note"
+        (click)="confirmDelete()"
+      >
+        <nz-icon nzType="delete" nzTheme="outline" />
+      </button>
+    </div>
+
+    <div class="panes" [class.panes--split]="viewMode() === 'split'">
+      <!-- Kept alive (only hidden) in Preview mode so the cursor, scroll and undo history survive. -->
+      <app-markdown-editor
+        class="panes__editor"
+        [class.hidden]="viewMode() === 'preview'"
+        [(value)]="content"
+      />
+      @if (viewMode() !== 'edit') {
+        <app-markdown-preview class="panes__preview" [source]="content()" />
+      }
+    </div>
+
+    <div class="meta">
+      Version {{ note.version }} · Updated {{ note.updatedAt | date: 'medium' }} ·
+      @if (tooLong()) {
+        <strong class="meta__error">Too long to save (max 500,000 characters)</strong>
+      } @else if (store.saving()) {
+        Saving...
+      } @else if (isDirty()) {
+        <strong>Unsaved changes</strong> (saved automatically when you stop typing)
+      } @else {
+        All changes saved
+      }
+    </div>
+  </div>
+}

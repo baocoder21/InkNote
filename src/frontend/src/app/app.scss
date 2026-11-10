@@ -1,18 +1,24 @@
-.home {
-  max-width: 40rem;
-  margin: 4rem auto;
-  padding: 0 1rem;
-  font-family: system-ui, sans-serif;
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
-.status {
-  font-weight: 600;
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--ink-border);
+  background: var(--ink-bg);
 
-  &--ok {
-    color: #1a7f37;
+  &__title {
+    font-weight: 700;
+    font-size: 1.1rem;
   }
+}
 
-  &--error {
-    color: #cf222e;
-  }
+.content {
+  flex: 1;
+  min-height: 0; // lets children scroll inside instead of growing the page
 }

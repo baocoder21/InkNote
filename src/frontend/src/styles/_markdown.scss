@@ -1,0 +1,96 @@
+// Styles for the rendered Markdown preview. They are global (not in a component) because the
+// HTML is inserted with innerHTML and therefore does not carry Angular's style attributes.
+.markdown-body {
+  padding: 1rem 1.25rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 1.4em 0 0.6em;
+    line-height: 1.25;
+  }
+
+  h1,
+  h2 {
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--ink-border);
+  }
+
+  a {
+    color: var(--ink-text-selected);
+  }
+
+  blockquote {
+    margin: 1em 0;
+    padding: 0 1em;
+    color: var(--ink-text-muted);
+    border-left: 4px solid var(--ink-border-strong);
+  }
+
+  code {
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    background: var(--ink-bg-code);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.9em;
+  }
+
+  // Code blocks colored by Shiki: it sets its own colors with inline styles.
+  pre {
+    padding: 0.9rem 1rem;
+    overflow: auto;
+    border-radius: 6px;
+    background: var(--ink-bg-code);
+
+    code {
+      padding: 0;
+      background: none;
+      font-size: 0.875rem;
+    }
+  }
+
+  table {
+    border-collapse: collapse;
+    margin: 1em 0;
+  }
+
+  th,
+  td {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--ink-border-strong);
+  }
+
+  th {
+    background: var(--ink-bg-code);
+  }
+
+  img,
+  svg {
+    max-width: 100%;
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--ink-border-strong);
+  }
+
+  // Mermaid draws an <svg> inside this <pre>; show it without the code-block box.
+  pre.mermaid {
+    display: flex;
+    justify-content: center;
+    background: none;
+    padding: 0.5rem 0;
+  }
+
+  .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}

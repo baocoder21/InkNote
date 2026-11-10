@@ -23,7 +23,7 @@ This is the user's first project. They want to learn and fully understand each t
 
 ## Stack (summary)
 
-- Frontend: Angular 22, SASS, ng-zorro (fallback: PrimeNG), CodeMirror 6, KaTeX, Mermaid, remark, DOMPurify. State: Signals + NgRx SignalStore; RxJS for HTTP/streams; Dexie (IndexedDB) for local-first.
+- Frontend: Angular 22, SASS, ng-zorro (MIT; PrimeNG 22 was rejected: it needs a license key), CodeMirror 6, KaTeX, Mermaid, remark, DOMPurify. State: Signals + NgRx SignalStore; RxJS for HTTP/streams; Dexie (IndexedDB) for local-first.
 - Backend: .NET 9, ASP.NET Core, EF Core + Npgsql, SignalR, Identity + JWT. Modular monolith.
 - DB: PostgreSQL. Cache: IMemoryCache (Redis later). Desktop: PWA.
 
