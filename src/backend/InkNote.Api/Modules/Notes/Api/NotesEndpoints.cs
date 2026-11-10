@@ -32,6 +32,13 @@ public static class NotesEndpoints
             .Produces<SearchResponse>()
             .ProducesValidationProblem();
 
+        // The older texts the server kept when two devices changed the same note.
+        group.MapGet("/{id:guid}/revisions", async (Guid id, NoteService notes, CancellationToken ct) =>
+                await notes.GetRevisionsAsync(id, ct) is { } revisions ? Results.Ok(revisions) : NotFound())
+            .WithName("ListNoteRevisions")
+            .Produces<IReadOnlyList<NoteRevisionDto>>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         group.MapGet("/{id:guid}", async (Guid id, NoteService notes, CancellationToken ct) =>
                 await notes.GetAsync(id, ct) is { } note ? Results.Ok(note) : NotFound())
             .WithName("GetNote")

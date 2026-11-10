@@ -5,7 +5,7 @@ import { NzModalService } from 'ng-zorro-antd/modal';
 import { API_BASE_URL } from '../../../../core/api.config';
 import { provideUi } from '../../../../core/ui.providers';
 import { Note, NoteSummary } from '../../models/note.model';
-import { NotesStore } from '../../store/notes.store';
+import { SyncEngine } from '../../../sync/sync-engine.service';
 import { TrashPageComponent } from './trash-page.component';
 
 const NOTES = `${API_BASE_URL}/api/notes`;
@@ -96,19 +96,31 @@ describe('TrashPageComponent', () => {
     expect(el().querySelector('.preview textarea, .preview input')).toBeNull(); // nothing to edit
   });
 
-  it('Restore posts the restore, reloads the live notes and drops the note from the list', async () => {
+  it('Restore posts the restore, starts a synchronization to bring the note back to this device, and drops it from the list', async () => {
+    const syncNow = vi.spyOn(TestBed.inject(SyncEngine), 'syncNow').mockResolvedValue();
     await show([summary('a', 'First'), summary('b', 'Second')]);
 
     button('Restore note First').click();
     const restore = http.expectOne(`${TRASH}/a/restore`);
     expect(restore.request.method).toBe('POST');
+    expect(syncNow).not.toHaveBeenCalled(); // not before the server has restored it
     restore.flush(full('a', 'First', ''));
-    await sleep(0);
-    http.expectOne(NOTES).flush([summary('a', 'First')]); // the sidebar list is reloaded
     await settle();
 
+    expect(syncNow).toHaveBeenCalledTimes(1);
     expect(titles()).toEqual(['Second']);
-    expect(TestBed.inject(NotesStore).notes().map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('a failed restore does not synchronize', async () => {
+    const syncNow = vi.spyOn(TestBed.inject(SyncEngine), 'syncNow').mockResolvedValue();
+    await show([summary('a', 'First')]);
+
+    button('Restore note First').click();
+    http.expectOne(`${TRASH}/a/restore`).flush('', { status: 500, statusText: 'Server Error' });
+    await settle();
+
+    expect(syncNow).not.toHaveBeenCalled();
+    expect(titles()).toEqual(['First']);
   });
 
   it('Delete forever asks first and sends nothing until the user confirms', async () => {

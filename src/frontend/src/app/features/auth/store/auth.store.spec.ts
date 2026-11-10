@@ -128,6 +128,20 @@ describe('AuthStore', () => {
       expect(await second).toBe('access-3');
     });
 
+    it('rejects, and keeps the session, when the server cannot be reached (offline is not "signed out")', async () => {
+      const login = store.login(CREDENTIALS);
+      http.expectOne(`${AUTH_URL}/login`).flush(response());
+      await login;
+
+      const refreshed = store.refresh();
+      http.expectOne(`${AUTH_URL}/refresh`).error(new ProgressEvent('error')); // status 0: it never arrived
+
+      await expect(refreshed).rejects.toBeDefined();
+      expect(store.isSignedIn()).toBe(true);
+      expect(localStorage.getItem('inknote.session')).toBe('1');
+      expect(localStorage.getItem('inknote.user')).not.toBeNull();
+    });
+
     it('resolves to null and forgets the session when the server refuses', async () => {
       const login = store.login(CREDENTIALS);
       http.expectOne(`${AUTH_URL}/login`).flush(response());
@@ -181,6 +195,67 @@ describe('AuthStore', () => {
       expect(await restored).toBe(false);
       expect(store.isSignedIn()).toBe(false);
       expect(localStorage.getItem('inknote.session')).toBeNull(); // the next visit does not even try
+    });
+  });
+
+  describe('restoreSession while offline (the app must start from the data on this device)', () => {
+    // What an earlier visit left in this browser: a session hint and who it was (no secrets).
+    const earlierVisit = () => {
+      localStorage.setItem('inknote.session', '1');
+      localStorage.setItem('inknote.user', JSON.stringify({ id: 'u1', email: 'ann@example.com' }));
+    };
+
+    it('carries on as the user this browser knows when the server cannot be reached', async () => {
+      earlierVisit();
+      const restored = store.restoreSession();
+      http.expectOne(`${AUTH_URL}/refresh`).error(new ProgressEvent('error'));
+
+      expect(await restored).toBe(true);
+      expect(store.user()).toEqual({ id: 'u1', email: 'ann@example.com' });
+      expect(store.accessToken()).toBeNull(); // renewed later, when the network answers
+      expect(localStorage.getItem('inknote.session')).toBe('1'); // the session is not forgotten
+      http.expectNone(`${AUTH_URL}/refresh`); // and a network error is not retried after a pause
+    });
+
+    it('cannot start offline when this browser does not know who the user is', async () => {
+      localStorage.setItem('inknote.session', '1');
+      const restored = store.restoreSession();
+      http.expectOne(`${AUTH_URL}/refresh`).error(new ProgressEvent('error'));
+
+      expect(await restored).toBe(false);
+      expect(store.isSignedIn()).toBe(false);
+    });
+
+    it('ignores a damaged "who" record', async () => {
+      localStorage.setItem('inknote.session', '1');
+      localStorage.setItem('inknote.user', '{not json');
+      const restored = store.restoreSession();
+      http.expectOne(`${AUTH_URL}/refresh`).error(new ProgressEvent('error'));
+
+      expect(await restored).toBe(false);
+    });
+
+    it('a refused session (not a network problem) still ends the session and forgets who it was', async () => {
+      earlierVisit();
+      const restored = store.restoreSession();
+      http.expectOne(`${AUTH_URL}/refresh`).flush({}, { status: 401, statusText: 'Unauthorized' });
+      (await vi.waitFor(() => http.expectOne(`${AUTH_URL}/refresh`))).flush({}, { status: 401, statusText: 'Unauthorized' });
+
+      expect(await restored).toBe(false);
+      expect(localStorage.getItem('inknote.user')).toBeNull();
+    });
+
+    it('signing out forgets who the user was (the next person on this computer must not be taken for them)', async () => {
+      const login = store.login(CREDENTIALS);
+      http.expectOne(`${AUTH_URL}/login`).flush(response());
+      await login;
+      expect(localStorage.getItem('inknote.user')).not.toBeNull();
+
+      const done = store.logout();
+      http.expectOne(`${AUTH_URL}/logout`).flush(null, { status: 204, statusText: 'No Content' });
+      await done;
+
+      expect(localStorage.getItem('inknote.user')).toBeNull();
     });
   });
 

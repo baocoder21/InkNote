@@ -11,38 +11,38 @@ import { ThemeService } from '../../../../core/theme.service';
 import { provideUi } from '../../../../core/ui.providers';
 import { AUTH_URL } from '../../../auth/services/auth-api.service';
 import { AuthStore } from '../../../auth/store/auth.store';
+import { LocalNote, LocalDbService, OutboxOp } from '../../../sync/local/local-db';
+import { LocalSession } from '../../../sync/local-session.service';
+import { SyncEngine } from '../../../sync/sync-engine.service';
 import { NotesStore } from '../../store/notes.store';
 import { OrganizationStore } from '../../store/organization.store';
 import { NotesSidebarComponent, SEARCH_DEBOUNCE_MS } from './notes-sidebar.component';
 
 const NOTES = `${API_BASE_URL}/api/notes`;
-const NOTEBOOKS = `${API_BASE_URL}/api/notebooks`;
-const TAGS = `${API_BASE_URL}/api/tags`;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const summary = (id: string, title: string, notebookId: string | null, extra = {}) => ({
+const summary = (id: string, title: string, notebookId: string | null, extra: Partial<LocalNote> = {}): LocalNote => ({
   id,
   title,
+  createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   version: 1,
   notebookId,
   isPinned: false,
   status: 'None',
-  tagIds: [] as string[],
+  tagIds: [],
   ...extra,
 });
 
-const FULL = (id: string, title: string, notebookId: string | null) => ({
-  ...summary(id, title, notebookId),
-  content: '',
-  createdAt: '2026-01-01T00:00:00Z',
-});
+let dbCounter = 0;
 
 describe('NotesSidebarComponent', () => {
   const hardNavigations: string[] = [];
   let fixture: ComponentFixture<NotesSidebarComponent>;
   let http: HttpTestingController;
+  let local: LocalDbService;
+  const ops = (): Promise<OutboxOp[]> => local.db.outbox.orderBy('seq').toArray();
   const el = () => fixture.nativeElement as HTMLElement;
   const rowNames = () =>
     Array.from(el().querySelectorAll('app-explorer-tree .row')).map(
@@ -78,31 +78,35 @@ describe('NotesSidebarComponent', () => {
       ],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
+    local = TestBed.inject(LocalDbService);
+    await local.open(`sidebar-${++dbCounter}`); // the database of this device; the engine is not started here
     fixture = TestBed.createComponent(NotesSidebarComponent);
 
-    // The notes page loads the stores; here we do it ourselves.
-    const notes = TestBed.inject(NotesStore).loadNotes();
-    const org = TestBed.inject(OrganizationStore).load();
-    http.expectOne(NOTES).flush([
+    // What the synchronization would have downloaded earlier.
+    await local.db.notes.bulkPut([
       summary('n1', 'Plan', 'w', { tagIds: ['t1'] }),
       summary('n2', 'Roadmap', 'p'),
       summary('n3', 'Loose', null, { status: 'Active', tagIds: ['t2'] }),
     ]);
-    http.expectOne(NOTEBOOKS).flush([
-      { id: 'w', name: 'Work', parentId: null },
-      { id: 'p', name: 'Projects', parentId: 'w' },
+    await local.db.contents.bulkPut(['n1', 'n2', 'n3'].map((id) => ({ id, content: '' })));
+    await local.db.notebooks.bulkPut([
+      { id: 'w', name: 'Work', parentId: null, version: 1 },
+      { id: 'p', name: 'Projects', parentId: 'w', version: 1 },
     ]);
-    http.expectOne(TAGS).flush([
-      { id: 't1', name: 'idea' },
-      { id: 't2', name: 'urgent' },
+    await local.db.tags.bulkPut([
+      { id: 't1', name: 'idea', version: 1 },
+      { id: 't2', name: 'urgent', version: 1 },
     ]);
-    await Promise.all([notes, org]);
+
+    // The notes page loads the stores; here we do it ourselves.
+    await Promise.all([TestBed.inject(NotesStore).loadNotes(), TestBed.inject(OrganizationStore).load()]);
     await settle();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     http.verify();
     document.querySelectorAll('.cdk-overlay-container').forEach((o) => (o.innerHTML = '')); // close leftover dialogs
+    await local.wipe();
   });
 
   const clickTool = async (label: string) => {
@@ -178,9 +182,7 @@ describe('NotesSidebarComponent', () => {
   });
 
   it('opening a note opens its folder and all the folders above it', async () => {
-    const opening = TestBed.inject(NotesStore).loadNote('n2'); // Roadmap, in Work / Projects
-    http.expectOne(`${NOTES}/n2`).flush(FULL('n2', 'Roadmap', 'p'));
-    await opening;
+    await TestBed.inject(NotesStore).loadNote('n2'); // Roadmap, in Work / Projects
     await settle();
 
     expect(rowNames()).toEqual(['[F] Work', '[F] Projects', '[N] Roadmap', '[N] Plan', '[N] Loose']);
@@ -197,17 +199,16 @@ describe('NotesSidebarComponent', () => {
     expect(el().querySelector('a.tag__link')!.getAttribute('href')).toBe('/notes?tag=t1');
   });
 
-  it('"New note" creates a loose note when no folder is current', async () => {
+  it('"New note" creates a loose note at once on this device (no waiting for the network) and queues it', async () => {
     await clickTool('New note');
 
-    const request = http.expectOne(NOTES);
-    expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ title: 'Untitled', content: '' });
-    request.flush({ ...FULL('new', 'Untitled', null) });
-    await settle();
-    await sleep(0);
-
-    expect(rowNames()).toContain('[N] Untitled');
+    await vi.waitFor(() => expect(rowNames()).toContain('[N] Untitled'));
+    const queued = (await ops()).filter((o) => o.entity === 'note');
+    expect(queued).toHaveLength(1);
+    // baseVersion null: a creation is not based on any version the server has.
+    expect(queued[0]).toMatchObject({ kind: 'upsert', baseVersion: null, data: { title: 'Untitled', content: '' } });
+    expect(queued[0].data?.['notebookId'] ?? null).toBeNull();
+    expect(TestBed.inject(Router).url).toBe(`/notes/${queued[0].id}`); // and it is opened
   });
 
   it('"New note" creates the note inside the current folder and opens that folder', async () => {
@@ -216,13 +217,9 @@ describe('NotesSidebarComponent', () => {
 
     await clickTool('New note');
 
-    const request = http.expectOne(NOTES);
-    expect(request.request.body).toEqual({ title: 'Untitled', content: '', notebookId: 'w' });
-    request.flush(FULL('new', 'Untitled', 'w'));
-    await settle();
-    await sleep(0);
-
-    expect(rowNames()).toContain('[N] Untitled');
+    await vi.waitFor(() => expect(rowNames()).toContain('[N] Untitled'));
+    const queued = (await ops()).filter((o) => o.entity === 'note');
+    expect(queued[0].data).toMatchObject({ notebookId: 'w' });
   });
 
   it('"New folder" creates a sub-folder of the current folder through the dialog', async () => {
@@ -232,14 +229,10 @@ describe('NotesSidebarComponent', () => {
     await clickTool('New folder');
     await fillDialog('Archive');
 
-    const request = await expectRequest(NOTEBOOKS);
-    expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ name: 'Archive', parentId: 'w' });
-    request.flush({ id: 'a', name: 'Archive', parentId: 'w' });
-    await sleep(0);
-    await settle();
-
-    expect(rowNames()).toContain('[F] Archive');
+    await vi.waitFor(() => expect(rowNames()).toContain('[F] Archive'));
+    expect((await ops()).filter((o) => o.entity === 'notebook')).toMatchObject([
+      { kind: 'upsert', data: { name: 'Archive', parentId: 'w' } },
+    ]);
   });
 
   it('"New tag…" creates a tag through the dialog and lists it sorted by name', async () => {
@@ -247,17 +240,15 @@ describe('NotesSidebarComponent', () => {
     await settle();
     await fillDialog('later');
 
-    const request = await expectRequest(TAGS);
-    expect(request.request.body).toEqual({ name: 'later' });
-    request.flush({ id: 't3', name: 'later' });
-    await sleep(0);
-    await settle();
-
-    const tagNames = Array.from(el().querySelectorAll('.tag__name')).map((e) => e.textContent);
-    expect(tagNames).toEqual(['idea', 'later', 'urgent']);
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      const tagNames = Array.from(el().querySelectorAll('.tag__name')).map((e) => e.textContent);
+      expect(tagNames).toEqual(['idea', 'later', 'urgent']);
+    });
+    expect((await ops()).filter((o) => o.entity === 'tag')).toMatchObject([{ kind: 'upsert', data: { name: 'later' } }]);
   });
 
-  it('pins a note from its menu using the version the list already has', async () => {
+  it('pins a note from its menu, on this device, and queues only the pin on top of the version the list has', async () => {
     row('Work').click();
     await settle();
 
@@ -269,13 +260,12 @@ describe('NotesSidebarComponent', () => {
     )!;
     pin.click();
 
-    const request = await expectRequest(`${NOTES}/n1/organization`);
-    expect(request.request.body).toEqual({ notebookId: 'w', isPinned: true, status: 'None', tagIds: ['t1'], version: 1 });
-    request.flush({ ...FULL('n1', 'Plan', 'w'), version: 2, isPinned: true, tagIds: ['t1'] });
-    await sleep(0);
-    await settle();
-
-    expect(row('Plan').querySelector('.row__pin')).not.toBeNull();
+    await vi.waitFor(async () => expect((await local.db.notes.get('n1'))?.isPinned).toBe(true));
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(row('Plan').querySelector('.row__pin')).not.toBeNull();
+    });
+    expect(await ops()).toMatchObject([{ entity: 'note', id: 'n1', kind: 'upsert', baseVersion: 1, data: { isPinned: true } }]);
     expect(rowNames()).toEqual(['[F] Work', '[F] Projects', '[N] Plan', '[N] Loose']);
   });
 
@@ -298,21 +288,127 @@ describe('NotesSidebarComponent', () => {
     expect(router.url).toBe('/notes/n3');
   });
 
-  it('shows who is signed in and signs out from the account row', async () => {
-    expect(el().querySelector('.account')).toBeNull(); // nobody signed in
+  describe('synchronization status and signing out', () => {
+    const signOutButton = () => el().querySelector<HTMLButtonElement>('button[aria-label="Sign out"]')!;
+    let wipe: ReturnType<typeof vi.spyOn>;
 
-    const login = TestBed.inject(AuthStore).login({ email: 'ann@example.com', password: 'whatever whatever', rememberMe: false });
-    http.expectOne(`${AUTH_URL}/login`).flush({ accessToken: 't', expiresInSeconds: 900, user: { id: 'u1', email: 'ann@example.com' } });
-    await login;
-    await settle();
-    expect(el().querySelector('.account__email')!.textContent).toContain('ann@example.com');
+    async function signIn() {
+      const login = TestBed.inject(AuthStore).login({ email: 'ann@example.com', password: 'whatever whatever', rememberMe: false });
+      http.expectOne(`${AUTH_URL}/login`).flush({ accessToken: 't', expiresInSeconds: 900, user: { id: 'u1', email: 'ann@example.com' } });
+      await login;
+      await settle();
+    }
 
-    el().querySelector<HTMLButtonElement>('button[aria-label="Sign out"]')!.click();
-    http.expectOne(`${AUTH_URL}/logout`).flush(null, { status: 204, statusText: 'No Content' });
-    await sleep(0);
+    beforeEach(() => {
+      // The real wipe would delete the database this test still uses; what matters is that it is called.
+      wipe = vi.spyOn(TestBed.inject(LocalSession), 'wipe').mockResolvedValue();
+    });
 
-    expect(TestBed.inject(AuthStore).isSignedIn()).toBe(false);
-    expect(hardNavigations).toEqual(['/login']);
+    it('shows the synchronization status, and pressing it synchronizes now', async () => {
+      const syncNow = vi.spyOn(TestBed.inject(SyncEngine), 'syncNow').mockResolvedValue();
+
+      const button = el().querySelector<HTMLButtonElement>('app-sync-status button')!;
+      expect(button).not.toBeNull();
+      button.click();
+
+      expect(syncNow).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows who is signed in and signs out from the account row: the data of this device goes too', async () => {
+      const engine = TestBed.inject(SyncEngine);
+      vi.spyOn(engine, 'syncNow').mockResolvedValue();
+      vi.spyOn(engine, 'pendingCount').mockResolvedValue(0);
+      expect(el().querySelector('.account')).toBeNull(); // nobody signed in
+
+      await signIn();
+      expect(el().querySelector('.account__email')!.textContent).toContain('ann@example.com');
+
+      signOutButton().click();
+      await vi.waitFor(() => http.expectOne(`${AUTH_URL}/logout`).flush(null, { status: 204, statusText: 'No Content' }));
+      await vi.waitFor(() => expect(hardNavigations).toEqual(['/login']));
+
+      expect(wipe).toHaveBeenCalledTimes(1);
+      expect(TestBed.inject(AuthStore).isSignedIn()).toBe(false);
+    });
+
+    it('tries to send what is waiting before it signs out', async () => {
+      const engine = TestBed.inject(SyncEngine);
+      const order: string[] = [];
+      vi.spyOn(engine, 'syncNow').mockImplementation(async () => void order.push('sync'));
+      vi.spyOn(engine, 'pendingCount').mockImplementation(async () => (order.push('count'), 0));
+      wipe.mockImplementation(async () => void order.push('wipe'));
+      await signIn();
+
+      signOutButton().click();
+      await vi.waitFor(() => http.expectOne(`${AUTH_URL}/logout`).flush(null, { status: 204, statusText: 'No Content' }));
+
+      expect(order).toEqual(['sync', 'count', 'wipe']);
+    });
+
+    it('with changes that could not be sent it asks first, and signing out is not done until the user agrees', async () => {
+      const engine = TestBed.inject(SyncEngine);
+      vi.spyOn(engine, 'syncNow').mockResolvedValue();
+      vi.spyOn(engine, 'pendingCount').mockResolvedValue(2);
+      await signIn();
+
+      signOutButton().click();
+      await vi.waitFor(() => expect(document.querySelector('.ant-modal-confirm')).not.toBeNull());
+      expect(document.querySelector('.ant-modal-confirm')!.textContent).toContain('2 changes have not reached the server');
+      expect(wipe).not.toHaveBeenCalled();
+      http.expectNone(`${AUTH_URL}/logout`);
+
+      document.querySelector<HTMLButtonElement>('.ant-modal-confirm-btns .ant-btn-dangerous')!.click();
+      await vi.waitFor(() => http.expectOne(`${AUTH_URL}/logout`).flush(null, { status: 204, statusText: 'No Content' }));
+
+      expect(wipe).toHaveBeenCalledTimes(1);
+    });
+
+    it('Cancel keeps the user signed in and the data on the device', async () => {
+      const engine = TestBed.inject(SyncEngine);
+      vi.spyOn(engine, 'syncNow').mockResolvedValue();
+      vi.spyOn(engine, 'pendingCount').mockResolvedValue(1);
+      await signIn();
+
+      signOutButton().click();
+      await vi.waitFor(() => expect(document.querySelector('.ant-modal-confirm')).not.toBeNull());
+      expect(document.querySelector('.ant-modal-confirm')!.textContent).toContain('1 change has not');
+
+      // The first button of the dialog is Cancel (the dangerous one is "Sign out and lose them").
+      document.querySelector<HTMLButtonElement>('.ant-modal-confirm-btns button:not(.ant-btn-dangerous)')!.click();
+      await sleep(50);
+
+      expect(wipe).not.toHaveBeenCalled();
+      expect(TestBed.inject(AuthStore).isSignedIn()).toBe(true);
+    });
+  });
+
+  describe('when the list is empty', () => {
+    const emptyMessage = () => el().querySelector('.state')?.textContent?.trim();
+
+    beforeEach(async () => {
+      await local.db.notes.clear();
+      await local.db.notebooks.clear();
+      await vi.waitFor(() => expect(TestBed.inject(NotesStore).notes()).toEqual([]));
+      await vi.waitFor(() => expect(TestBed.inject(OrganizationStore).notebooks()).toEqual([]));
+      await settle();
+    });
+
+    it('before the first download it says the notes are loading, or that a connection is needed when offline', async () => {
+      const engine = TestBed.inject(SyncEngine);
+
+      expect(emptyMessage()).toBe('Loading your notes...');
+
+      engine.state.set('offline');
+      await settle();
+      expect(emptyMessage()).toBe('Connect to the internet once to download your notes.');
+    });
+
+    it('after the first download it invites the user to create something', async () => {
+      TestBed.inject(SyncEngine).initialSyncDone.set(true);
+      await settle();
+
+      expect(emptyMessage()).toContain('Nothing here yet');
+    });
   });
 
   it('deletes a note after the user confirms', async () => {
@@ -326,19 +422,19 @@ describe('NotesSidebarComponent', () => {
       .find((i) => i.textContent!.includes('Delete note'))!
       .click();
     await vi.waitFor(() => expect(document.querySelector('.ant-modal-confirm')).not.toBeNull());
-    http.expectNone(`${NOTES}/n1`); // nothing is deleted before the user confirms
+    expect(await local.db.notes.get('n1')).toBeDefined(); // nothing is deleted before the user confirms
 
     document.querySelector<HTMLButtonElement>('.ant-modal-confirm-btns .ant-btn-dangerous')!.click();
 
-    const request = await expectRequest(`${NOTES}/n1`);
-    expect(request.request.method).toBe('DELETE');
-    request.flush(null, { status: 204, statusText: 'No Content' });
-    await sleep(0);
-    await settle();
+    // The deletion happens on this device and is queued; the list does not wait for the server.
+    await vi.waitFor(async () => expect(await local.db.notes.get('n1')).toBeUndefined());
+    expect(await ops()).toMatchObject([{ entity: 'note', id: 'n1', kind: 'delete', baseVersion: 1 }]);
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(rowNames()).not.toContain('[N] Plan');
+    });
 
-    expect(rowNames()).not.toContain('[N] Plan');
-
-    // The note went to the trash: the sidebar asks for the trash again and shows the count.
+    // The note goes to the trash on the server: the sidebar asks for the trash again and shows the count.
     (await expectRequest(`${NOTES}/trash`)).flush([summary('n1', 'Plan', 'w')]);
     await sleep(0);
     await settle();

@@ -188,6 +188,16 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("parent_id");
 
+                    b.Property<DateTimeOffset>("SyncAt")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sync_at");
+
+                    b.Property<long>("SyncSeq")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_seq");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -204,6 +214,9 @@ namespace InkNote.Api.Persistence.Migrations
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_notebooks_user_id");
+
+                    b.HasIndex("UserId", "SyncSeq")
+                        .HasDatabaseName("ix_notebooks_user_id_sync_seq");
 
                     b.ToTable("notebooks", (string)null);
                 });
@@ -250,6 +263,16 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasDefaultValue("None")
                         .HasColumnName("status");
 
+                    b.Property<DateTimeOffset>("SyncAt")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sync_at");
+
+                    b.Property<long>("SyncSeq")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_seq");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -286,7 +309,62 @@ namespace InkNote.Api.Persistence.Migrations
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_notes_user_id");
 
+                    b.HasIndex("UserId", "SyncSeq")
+                        .HasDatabaseName("ix_notes_user_id_sync_seq");
+
                     b.ToTable("notes", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.NoteRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("note_id");
+
+                    b.Property<int>("NoteVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("note_version");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_note_revisions");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_note_revisions_user_id");
+
+                    b.HasIndex("NoteId", "CreatedAt")
+                        .HasDatabaseName("ix_note_revisions_note_id_created_at");
+
+                    b.ToTable("note_revisions", (string)null);
                 });
 
             modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.NoteTag", b =>
@@ -306,6 +384,74 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasDatabaseName("ix_note_tags_tag_id");
 
                     b.ToTable("note_tags", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Sync.Domain.SyncOperationRecord", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("OpId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("op_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result");
+
+                    b.HasKey("UserId", "OpId")
+                        .HasName("pk_sync_operations");
+
+                    b.ToTable("sync_operations", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Sync.Domain.SyncTombstone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Entity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("entity");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<DateTimeOffset>("SyncAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sync_at")
+                        .HasDefaultValueSql("clock_timestamp()");
+
+                    b.Property<long>("SyncSeq")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_seq")
+                        .HasDefaultValueSql("nextval('sync_seq')");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sync_tombstones");
+
+                    b.HasIndex("UserId", "SyncSeq")
+                        .HasDatabaseName("ix_sync_tombstones_user_id_sync_seq");
+
+                    b.ToTable("sync_tombstones", (string)null);
                 });
 
             modelBuilder.Entity("InkNote.Api.Modules.Tags.Domain.Tag", b =>
@@ -331,6 +477,16 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("normalized_name");
 
+                    b.Property<DateTimeOffset>("SyncAt")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sync_at");
+
+                    b.Property<long>("SyncSeq")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_seq");
+
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
@@ -341,6 +497,9 @@ namespace InkNote.Api.Persistence.Migrations
                     b.HasIndex("UserId", "NormalizedName")
                         .IsUnique()
                         .HasDatabaseName("ix_tags_user_id_normalized_name");
+
+                    b.HasIndex("UserId", "SyncSeq")
+                        .HasDatabaseName("ix_tags_user_id_sync_seq");
 
                     b.ToTable("tags", (string)null);
                 });
@@ -466,6 +625,22 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasConstraintName("fk_notes_users_user_id");
                 });
 
+            modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.NoteRevision", b =>
+                {
+                    b.HasOne("InkNote.Api.Modules.Notes.Domain.Note", null)
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_note_revisions_notes_note_id");
+
+                    b.HasOne("InkNote.Api.Modules.Auth.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_note_revisions_users_user_id");
+                });
+
             modelBuilder.Entity("InkNote.Api.Modules.Notes.Domain.NoteTag", b =>
                 {
                     b.HasOne("InkNote.Api.Modules.Notes.Domain.Note", null)
@@ -481,6 +656,16 @@ namespace InkNote.Api.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_note_tags_tags_tag_id");
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Sync.Domain.SyncOperationRecord", b =>
+                {
+                    b.HasOne("InkNote.Api.Modules.Auth.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_sync_operations_users_user_id");
                 });
 
             modelBuilder.Entity("InkNote.Api.Modules.Tags.Domain.Tag", b =>

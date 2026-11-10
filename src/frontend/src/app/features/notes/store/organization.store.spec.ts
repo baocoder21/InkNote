@@ -1,126 +1,108 @@
-import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { API_BASE_URL } from '../../../core/api.config';
-import { Notebook, Tag } from '../models/organization.model';
+import { LocalDbService, OutboxOp } from '../../sync/local/local-db';
+import { NotesRepository } from '../data/notes-repository';
 import { OrganizationStore } from './organization.store';
 
-const NOTEBOOKS = `${API_BASE_URL}/api/notebooks`;
-const TAGS = `${API_BASE_URL}/api/tags`;
+let counter = 0;
 
-const nb = (id: string, name: string, parentId: string | null = null): Notebook => ({ id, name, parentId });
-const tag = (id: string, name: string): Tag => ({ id, name });
-
-describe('OrganizationStore', () => {
+describe('OrganizationStore (notebooks and tags on this device)', () => {
   let store: InstanceType<typeof OrganizationStore>;
-  let http: HttpTestingController;
+  let local: LocalDbService;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+  beforeEach(async () => {
+    local = TestBed.inject(LocalDbService);
     store = TestBed.inject(OrganizationStore);
-    http = TestBed.inject(HttpTestingController);
+    await local.open(`org-store-${++counter}`);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => local.wipe());
 
-  async function loaded(notebooks: Notebook[], tags: Tag[]): Promise<void> {
-    const promise = store.load();
-    http.expectOne(NOTEBOOKS).flush(notebooks);
-    http.expectOne(TAGS).flush(tags);
-    await promise;
-  }
+  const ops = (): Promise<OutboxOp[]> => local.db.outbox.orderBy('seq').toArray();
 
-  it('load fetches notebooks and tags together and builds the tree', async () => {
-    await loaded([nb('p', 'Parent'), nb('c', 'Child', 'p')], [tag('t', 'work')]);
-
-    expect(store.tags()).toEqual([tag('t', 'work')]);
-    expect(store.tree().map((n) => n.notebook.id)).toEqual(['p']);
-    expect(store.tree()[0].children.map((n) => n.notebook.id)).toEqual(['c']);
-    expect(store.notebookOptions().map((o) => [o.notebook.id, o.depth])).toEqual([
-      ['p', 0],
-      ['c', 1],
+  it('load answers true once notebooks and tags are in, and keeps following the database', async () => {
+    await local.db.notebooks.put({ id: 'nb1', name: 'Work', parentId: null, version: 1 });
+    await local.db.tags.bulkPut([
+      { id: 't2', name: 'zebra', version: 1 },
+      { id: 't1', name: 'alpha', version: 1 },
     ]);
+
+    expect(await store.load()).toBe(true);
+
+    expect(store.notebooks().map((n) => n.name)).toEqual(['Work']);
+    expect(store.tags().map((t) => t.name)).toEqual(['alpha', 'zebra']); // sorted by name
     expect(store.loading()).toBe(false);
+
+    await local.db.tags.put({ id: 't3', name: 'middle', version: 1 }); // e.g. pulled from the server
+    await vi.waitFor(() => expect(store.tags().map((t) => t.name)).toEqual(['alpha', 'middle', 'zebra']));
   });
 
-  it('load returns false and stops loading when a request fails', async () => {
-    const promise = store.load();
-    http.expectOne(NOTEBOOKS).flush('boom', { status: 500, statusText: 'Server Error' });
-    http.match(TAGS); // the second request is cancelled by forkJoin or still open: ignore it
+  it('builds the tree and the flat options from the notebooks', async () => {
+    await local.db.notebooks.bulkPut([
+      { id: 'a', name: 'Parent', parentId: null, version: 1 },
+      { id: 'b', name: 'Child', parentId: 'a', version: 1 },
+    ]);
+    await store.load();
 
-    expect(await promise).toBe(false);
-    expect(store.loading()).toBe(false);
+    expect(store.tree().map((n) => n.notebook.name)).toEqual(['Parent']);
+    expect(store.notebookOptions().map((o) => o.path)).toEqual(['Parent', 'Parent / Child']);
   });
 
-  it('createNotebook posts name and parent and adds the notebook to the tree', async () => {
-    await loaded([nb('p', 'Parent')], []);
+  it('createNotebook works at once, offline, and queues it', async () => {
+    await store.load();
 
-    const promise = store.createNotebook('Child', 'p');
-    const request = http.expectOne(NOTEBOOKS);
-    expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ name: 'Child', parentId: 'p' });
-    request.flush(nb('c', 'Child', 'p'));
+    const notebook = await store.createNotebook('Ideas', null);
 
-    expect((await promise)?.id).toBe('c');
-    expect(store.tree()[0].children.map((n) => n.notebook.name)).toEqual(['Child']);
+    expect(notebook).toMatchObject({ name: 'Ideas', parentId: null });
+    await vi.waitFor(() => expect(store.notebooks().map((n) => n.name)).toEqual(['Ideas']));
+    expect((await ops())[0]).toMatchObject({ entity: 'notebook', kind: 'upsert', data: { name: 'Ideas', parentId: null } });
   });
 
-  it('createNotebook returns null when the server refuses', async () => {
-    const promise = store.createNotebook('X', 'missing-parent');
-    http.expectOne(NOTEBOOKS).flush('', { status: 400, statusText: 'Bad Request' });
+  it('renameNotebook changes the name and says not-found for a missing one', async () => {
+    await store.load();
+    const notebook = (await store.createNotebook('Old', null))!;
 
-    expect(await promise).toBeNull();
-    expect(store.notebooks()).toEqual([]);
+    expect(await store.renameNotebook(notebook.id, 'New')).toBe('ok');
+    expect(await store.renameNotebook('missing', 'x')).toBe('not-found');
+
+    await vi.waitFor(() => expect(store.notebooks()[0].name).toBe('New'));
   });
 
-  it('renameNotebook sends the new name together with the unchanged parent', async () => {
-    await loaded([nb('p', 'Parent'), nb('c', 'Child', 'p')], []);
+  it('deleteNotebook refuses a notebook that is not empty, deletes an empty one, and treats a missing one as done', async () => {
+    await store.load();
+    const parent = (await store.createNotebook('Parent', null))!;
+    await store.createNotebook('Child', parent.id);
+    const loose = (await store.createNotebook('Empty', null))!;
+    const notes = TestBed.inject(NotesRepository);
+    await notes.create('Inside', '', loose.id);
 
-    const promise = store.renameNotebook('c', 'Renamed');
-    const request = http.expectOne(`${NOTEBOOKS}/c`);
-    expect(request.request.method).toBe('PUT');
-    expect(request.request.body).toEqual({ name: 'Renamed', parentId: 'p' });
-    request.flush(nb('c', 'Renamed', 'p'));
-
-    expect(await promise).toBe('ok');
-    expect(store.notebooks().find((n) => n.id === 'c')?.name).toBe('Renamed');
+    expect(await store.deleteNotebook(parent.id)).toBe('not-empty'); // has a sub-notebook
+    expect(await store.deleteNotebook(loose.id)).toBe('not-empty'); // has a note
+    expect(await store.deleteNotebook('missing')).toBe('ok');
+    await vi.waitFor(() => expect(store.notebooks()).toHaveLength(3));
   });
 
-  it('deleteNotebook removes it, but keeps it when the server says it is not empty (409)', async () => {
-    await loaded([nb('a', 'A'), nb('b', 'B')], []);
+  it('createTag refuses a name that exists (ignoring case) and creates a new one', async () => {
+    await store.load();
 
-    const refused = store.deleteNotebook('a');
-    http.expectOne(`${NOTEBOOKS}/a`).flush('', { status: 409, statusText: 'Conflict' });
-    expect(await refused).toBe('not-empty');
-    expect(store.notebooks().map((n) => n.id)).toEqual(['a', 'b']);
+    const first = await store.createTag('Work');
+    const clash = await store.createTag('work');
 
-    const deleted = store.deleteNotebook('b');
-    http.expectOne(`${NOTEBOOKS}/b`).flush(null, { status: 204, statusText: 'No Content' });
-    expect(await deleted).toBe('ok');
-    expect(store.notebooks().map((n) => n.id)).toEqual(['a']);
+    expect(first.status).toBe('ok');
+    expect(clash.status).toBe('duplicate');
+    await vi.waitFor(() => expect(store.tags().map((t) => t.name)).toEqual(['Work']));
   });
 
-  it('createTag keeps tags sorted by name and reports a duplicate (409)', async () => {
-    await loaded([], [tag('1', 'beta')]);
+  it('deleteTag removes the tag and takes it off the notes', async () => {
+    await store.load();
+    const tag = await store.createTag('Temp');
+    if (tag.status !== 'ok') throw new Error('expected ok');
+    const notes = TestBed.inject(NotesRepository);
+    const note = await notes.create('T', 'b', null);
+    await notes.updateOrganization(note.id, { notebookId: null, isPinned: false, status: 'None', tagIds: [tag.tag.id] });
 
-    const created = store.createTag('Alpha');
-    http.expectOne(TAGS).flush(tag('2', 'Alpha'));
-    expect(await created).toEqual({ status: 'ok', tag: tag('2', 'Alpha') });
-    expect(store.tags().map((t) => t.name)).toEqual(['Alpha', 'beta']);
+    expect(await store.deleteTag(tag.tag.id)).toBe(true);
 
-    const duplicate = store.createTag('BETA');
-    http.expectOne(TAGS).flush('', { status: 409, statusText: 'Conflict' });
-    expect(await duplicate).toEqual({ status: 'duplicate' });
-    expect(store.tags()).toHaveLength(2);
-  });
-
-  it('deleteTag removes the tag', async () => {
-    await loaded([], [tag('1', 'a'), tag('2', 'b')]);
-
-    const promise = store.deleteTag('1');
-    http.expectOne(`${TAGS}/1`).flush(null, { status: 204, statusText: 'No Content' });
-
-    expect(await promise).toBe(true);
-    expect(store.tags().map((t) => t.id)).toEqual(['2']);
+    await vi.waitFor(() => expect(store.tags()).toEqual([]));
+    expect((await notes.get(note.id))?.tagIds).toEqual([]);
   });
 });

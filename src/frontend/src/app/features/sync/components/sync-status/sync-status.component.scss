@@ -1,0 +1,38 @@
+:host {
+  display: block;
+}
+
+.sync {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-text-muted);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--ink-bg-hover);
+    color: var(--ink-text);
+    outline: none;
+  }
+
+  // Offline is not an error: the app works. A normal, calm color; only a real problem is colored.
+  &--error {
+    color: var(--ink-danger);
+  }
+
+  &__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

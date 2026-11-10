@@ -4,19 +4,6 @@
   </div>
 } @else if (store.selected(); as note) {
   <div class="editor">
-    @if (conflict()) {
-      <nz-alert
-        class="banner"
-        nzType="warning"
-        nzShowIcon
-        nzMessage="This note was changed somewhere else. Reload to get the latest version (your unsaved text will be replaced)."
-        [nzAction]="reloadAction"
-      />
-      <ng-template #reloadAction>
-        <button nz-button nzSize="small" (click)="reload()">Reload</button>
-      </ng-template>
-    }
-
     <header class="head">
       <input
         #titleInput

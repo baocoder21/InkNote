@@ -27,6 +27,9 @@ import { NotesStore } from '../../store/notes.store';
 import { OrganizationStore } from '../../store/organization.store';
 import { SearchStore } from '../../store/search.store';
 import { AuthStore } from '../../../auth/store/auth.store';
+import { SyncStatusComponent } from '../../../sync/components/sync-status/sync-status.component';
+import { LocalSession } from '../../../sync/local-session.service';
+import { SyncEngine } from '../../../sync/sync-engine.service';
 import { TrashStore } from '../../store/trash.store';
 import { ExplorerTreeComponent } from '../explorer-tree/explorer-tree.component';
 import { NameDialogComponent, NameDialogData } from '../name-dialog/name-dialog.component';
@@ -63,6 +66,7 @@ export const SEARCH_DEBOUNCE_MS = new InjectionToken<number>('SEARCH_DEBOUNCE_MS
     ExplorerTreeComponent,
     SearchBoxComponent,
     SearchResultsComponent,
+    SyncStatusComponent,
   ],
   templateUrl: './notes-sidebar.component.html',
   styleUrl: './notes-sidebar.component.scss',
@@ -79,6 +83,8 @@ export class NotesSidebarComponent {
   protected readonly trash = inject(TrashStore);
   protected readonly search = inject(SearchStore);
   protected readonly auth = inject(AuthStore);
+  protected readonly sync = inject(SyncEngine);
+  private readonly session = inject(LocalSession);
   protected readonly theme = inject(ThemeService);
   protected readonly themes = THEME_OPTIONS;
   private readonly router = inject(Router);
@@ -119,6 +125,17 @@ export class NotesSidebarComponent {
 
   // The target of the tag menu (same idea as the tree's shared menu).
   protected readonly menuTag = signal<Tag | null>(null);
+
+  // What the empty list says. "Empty" can also mean "not downloaded yet" (a new device, or a new sign-in).
+  protected readonly emptyText = computed(() => {
+    if (this.tagId()) return 'No notes have this tag yet.';
+    if (!this.sync.initialSyncDone()) {
+      return this.sync.state() === 'offline'
+        ? 'Connect to the internet once to download your notes.'
+        : 'Loading your notes...';
+    }
+    return 'Nothing here yet. Use the icons above to create a note or a folder.';
+  });
 
   // ---- search ----
   // What is in the box. The URL (?q=) is the source of truth for WHAT is searched; the box is what the
@@ -190,6 +207,35 @@ export class NotesSidebarComponent {
     void this.router.navigate([], { queryParams: { q: text || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
+  // ---- signing out ----
+
+  /**
+   * Signs out. The data of this device is deleted with it, so anything that has not reached the server yet
+   * would be lost: try to send it first, and if some of it still cannot go (offline), ask.
+   */
+  protected async signOut(): Promise<void> {
+    // At most a few seconds: an unreachable server must not trap the user in the app.
+    await Promise.race([this.sync.syncNow(), new Promise<void>((resolve) => setTimeout(resolve, 4000))]);
+    const waiting = await this.sync.pendingCount();
+    if (waiting === 0) {
+      await this.finishSignOut();
+      return;
+    }
+    this.modal.confirm({
+      nzTitle: 'Sign out with unsynced changes?',
+      nzContent: `${waiting} ${waiting === 1 ? 'change has' : 'changes have'} not reached the server yet (are you offline?). They are only stored on this device, and signing out deletes them. Cancel and sign out later to keep them.`,
+      nzOkText: 'Sign out and lose them',
+      nzOkDanger: true,
+      nzCancelText: 'Cancel',
+      nzOnOk: () => this.finishSignOut(),
+    });
+  }
+
+  private async finishSignOut(): Promise<void> {
+    await this.session.wipe(); // this user's notes leave this device...
+    await this.auth.logout(); // ...and so does the session
+  }
+
   // ---- notes ----
 
   protected async newNote(): Promise<void> {
@@ -229,9 +275,7 @@ export class NotesSidebarComponent {
       status: note.status,
       tagIds: note.tagIds,
     });
-    if (result === 'conflict') {
-      this.message.warning('This note was changed somewhere else. Reload the page and try again.');
-    } else if (result !== 'ok') {
+    if (result !== 'ok') {
       this.message.error('Cannot pin the note');
     }
   }
@@ -377,7 +421,6 @@ export class NotesSidebarComponent {
       return;
     }
     this.message.success('Tag deleted', { nzDuration: 1500 });
-    this.store.forgetTag(tag.id); // the server removed it from every note: mirror that here
     if (this.tagId() === tag.id) {
       await this.router.navigate(['/notes']);
     }

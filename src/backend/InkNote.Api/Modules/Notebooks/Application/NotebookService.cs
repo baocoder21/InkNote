@@ -54,16 +54,11 @@ public sealed class NotebookService(AppDbContext db, ICurrentUser user, INoteboo
                 return new NotebookResult(NotebookStatus.InvalidParent, Message: "The parent notebook does not exist.");
             }
 
-            // Cycle check: walk from the new parent up to the root. If we meet the notebook
-            // being edited, the new parent is the notebook itself or one of its descendants.
-            for (Guid? current = newParentId; current is { } step; parents.TryGetValue(step, out current))
+            if (NotebookTree.CreatesCycle(parents, id, newParentId))
             {
-                if (step == id)
-                {
-                    return new NotebookResult(
-                        NotebookStatus.InvalidParent,
-                        Message: "A notebook cannot be moved into itself or into one of its sub-notebooks.");
-                }
+                return new NotebookResult(
+                    NotebookStatus.InvalidParent,
+                    Message: "A notebook cannot be moved into itself or into one of its sub-notebooks.");
             }
         }
 

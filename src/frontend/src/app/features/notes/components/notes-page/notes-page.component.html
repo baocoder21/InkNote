@@ -2,6 +2,10 @@
   <app-notes-sidebar class="sidebar" [tagId]="tag() ?? null" [q]="q() ?? null" />
 
   <section class="pane">
-    <router-outlet />
+    <!-- The pages inside read the local database, so they appear only once it is open. Without this a reload on
+         /notes/<id> started the editor BEFORE the database was open and it failed with "Cannot load the note". -->
+    @if (ready()) {
+      <router-outlet />
+    }
   </section>
 </div>

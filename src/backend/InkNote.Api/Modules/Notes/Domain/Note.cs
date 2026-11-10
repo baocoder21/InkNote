@@ -39,9 +39,11 @@ public sealed class Note
     private readonly List<NoteTag> _tags = [];
     public IReadOnlyCollection<NoteTag> Tags => _tags;
 
-    public static Note Create(Guid userId, string title, string content, Guid? notebookId, DateTimeOffset now) => new()
+    /// <param name="id">Normally generated here. A synchronizing client creates notes while offline, so it chooses the id
+    /// itself (that is why ids are Guids: no risk of two devices picking the same one).</param>
+    public static Note Create(Guid userId, string title, string content, Guid? notebookId, DateTimeOffset now, Guid? id = null) => new()
     {
-        Id = Guid.CreateVersion7(), // time-ordered Guid: friendlier to database indexes
+        Id = id ?? Guid.CreateVersion7(), // time-ordered Guid: friendlier to database indexes
         UserId = userId,
         Title = title,
         Content = content,
@@ -78,6 +80,50 @@ public sealed class Note
         Content = content;
         UpdatedAt = now;
         Version++;
+    }
+
+    /// <summary>
+    /// Applies only the fields a synchronizing client changed ("a patch"); every field that is null is left as
+    /// it is. This is what makes concurrent edits of DIFFERENT fields merge: a device that pinned the note does
+    /// not undo the title another device typed. Bumps Version once; UpdatedAt moves only when the text changed.
+    /// </summary>
+    /// <param name="setNotebook">true when the patch mentions the notebook (null is a real value there: "no notebook").</param>
+    /// <returns>false when nothing changed (then nothing is bumped).</returns>
+    public bool ApplyPatch(
+        string? title, string? content, bool setNotebook, Guid? notebookId,
+        bool? isPinned, NoteStatus? status, IReadOnlyCollection<Guid>? tagIds, DateTimeOffset now)
+    {
+        var textChanged = (title is not null && title != Title) || (content is not null && content != Content);
+        var wantedTags = tagIds?.ToHashSet();
+        var tagsChanged = wantedTags is not null && !wantedTags.SetEquals(_tags.Select(t => t.TagId));
+        var organizationChanged =
+            (setNotebook && notebookId != NotebookId)
+            || (isPinned is not null && isPinned != IsPinned)
+            || (status is not null && status != Status)
+            || tagsChanged;
+
+        if (!textChanged && !organizationChanged)
+        {
+            return false;
+        }
+
+        Title = title ?? Title;
+        Content = content ?? Content;
+        if (setNotebook) NotebookId = notebookId;
+        IsPinned = isPinned ?? IsPinned;
+        Status = status ?? Status;
+        if (wantedTags is not null && tagsChanged)
+        {
+            _tags.RemoveAll(t => !wantedTags.Contains(t.TagId));
+            foreach (var tagId in wantedTags.Except(_tags.Select(t => t.TagId)))
+            {
+                _tags.Add(new NoteTag(Id, tagId));
+            }
+        }
+
+        if (textChanged) UpdatedAt = now;
+        Version++;
+        return true;
     }
 
     public void MarkDeleted(DateTimeOffset now)

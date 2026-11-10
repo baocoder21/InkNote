@@ -186,6 +186,9 @@ public sealed class UserIsolationApiTests(ApiFixture api) : IClassFixture<ApiFix
         {
             { "GET", "/api/notes" },
             { "GET", "/api/notes/search?q=a" },
+            { "GET", "/api/sync/pull" },
+            { "POST", "/api/sync/push" },
+            { "GET", $"/api/notes/{id}/revisions" },
             { "POST", "/api/notes" },
             { "GET", $"/api/notes/{id}" },
             { "PUT", $"/api/notes/{id}" },

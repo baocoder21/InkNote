@@ -19,8 +19,8 @@ export type TrashResult = 'ok' | 'not-found' | 'error';
 
 /**
  * The trash: notes that were deleted but can still be brought back. Separate from NotesStore
- * (the live notes) so a deleted note can never show up in the sidebar by accident. The page that
- * restores a note also asks NotesStore to reload its list.
+ * (the live notes) so a deleted note can never show up in the sidebar by accident. The trash lives on the
+ * server only; the page that restores a note starts a synchronization so the note comes back to this device.
  */
 export const TrashStore = signalStore(
   { providedIn: 'root' },

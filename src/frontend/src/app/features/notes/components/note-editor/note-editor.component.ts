@@ -17,7 +17,6 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { NzAlertComponent } from 'ng-zorro-antd/alert';
-import { NzButtonComponent } from 'ng-zorro-antd/button';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSegmentedComponent } from 'ng-zorro-antd/segmented';
 import { NzSpinComponent } from 'ng-zorro-antd/spin';
@@ -30,12 +29,13 @@ import { MarkdownPreviewComponent } from '../markdown-preview/markdown-preview.c
 import { NoteOrganizationComponent } from '../note-organization/note-organization.component';
 
 /**
- * Save automatically this long (ms) after the user stops typing.
+ * Save to the database of this device this long (ms) after the user stops typing. A local save costs a few
+ * milliseconds, so this is short (the pause before the SERVER is told is the sync engine's own).
  * An InjectionToken (instead of a plain constant) so that tests can shorten it.
  */
 export const AUTOSAVE_DELAY_MS = new InjectionToken<number>('AUTOSAVE_DELAY_MS', {
   providedIn: 'root',
-  factory: () => 1500,
+  factory: () => 400,
 });
 
 type ViewMode = 'edit' | 'split' | 'preview';
@@ -45,7 +45,6 @@ type ViewMode = 'edit' | 'split' | 'preview';
   imports: [
     FormsModule,
     NzAlertComponent,
-    NzButtonComponent,
     NzSegmentedComponent,
     NzSpinComponent,
     MarkdownEditorComponent,
@@ -94,10 +93,25 @@ export class NoteEditorComponent {
     },
   );
 
-  // The text being typed. linkedSignal = a writable signal that is reset to the saved
-  // text whenever savedText() changes (new note opened, or saved successfully).
-  protected readonly title = linkedSignal(() => this.savedText()?.title ?? '');
-  protected readonly content = linkedSignal(() => this.savedText()?.content ?? '');
+  // The text being typed. linkedSignal = a writable signal that follows the saved text: a new note
+  // opened, or a change that arrives from elsewhere (the synchronization brought another device's edit).
+  // But NEVER at the expense of the user: when the box holds something that is not saved yet (it differs
+  // from the saved text it was last in step with) it keeps it. Otherwise a change arriving while somebody
+  // types would swallow the last keystrokes.
+  protected readonly title = linkedSignal<ReturnType<typeof this.savedText>, string>({
+    source: this.savedText,
+    computation: (saved, previous) =>
+      previous && saved && previous.source?.id === saved.id && previous.value !== previous.source.title
+        ? previous.value
+        : (saved?.title ?? ''),
+  });
+  protected readonly content = linkedSignal<ReturnType<typeof this.savedText>, string>({
+    source: this.savedText,
+    computation: (saved, previous) =>
+      previous && saved && previous.source?.id === saved.id && previous.value !== previous.source.content
+        ? previous.value
+        : (saved?.content ?? ''),
+  });
 
   protected readonly viewMode = signal<ViewMode>('split');
   protected readonly viewOptions = [
@@ -122,9 +136,6 @@ export class NoteEditorComponent {
       !this.tooLong() &&
       !this.store.saving(),
   );
-
-  // True after the server answered 409: someone else changed this note.
-  protected readonly conflict = signal(false);
 
   // The title box (it only exists while a note is shown).
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
@@ -159,12 +170,22 @@ export class NoteEditorComponent {
       });
     });
 
+    // The open note was deleted on another device (a synchronization brought that here).
+    effect(() => {
+      if (this.store.selectedGone()) {
+        untracked(() => {
+          this.message.warning('This note was deleted on another device.');
+          void this.leave();
+        });
+      }
+    });
+
     // AUTOSAVE (RxJS): every edit restarts the timer; when the user pauses for
     // `autosaveDelay` ms, save. exhaustMap ignores new triggers while a save is running.
     toObservable(this.pendingEdit)
       .pipe(
         debounceTime(this.autosaveDelay),
-        filter((edit) => edit !== null && this.canSave() && !this.conflict()),
+        filter((edit) => edit !== null && this.canSave()),
         exhaustMap(() => from(this.persist(true))),
         takeUntilDestroyed(),
       )
@@ -173,7 +194,7 @@ export class NoteEditorComponent {
     // Leaving the page (e.g. to the empty state) with an unsaved draft: save it first.
     inject(DestroyRef).onDestroy(() => {
       const current = this.store.selected();
-      if (current && this.canSave() && !this.conflict()) {
+      if (current && this.canSave()) {
         void this.store.saveNote(current.id, this.title().trim(), this.content());
       }
     });
@@ -182,7 +203,6 @@ export class NoteEditorComponent {
   private async load(id: string, force: boolean): Promise<void> {
     // Switching notes: the draft of the note we are leaving must not be lost.
     await this.saveDraftBeforeSwitching(id);
-    this.conflict.set(false);
 
     // Same note is already open (e.g. a forced reload is not requested): nothing to download.
     if (!force && this.store.selected()?.id === id) {
@@ -200,17 +220,13 @@ export class NoteEditorComponent {
 
   private async saveDraftBeforeSwitching(nextId: string): Promise<void> {
     const current = this.store.selected();
-    if (!current || current.id === nextId || !this.canSave() || this.conflict()) {
+    if (!current || current.id === nextId || !this.canSave()) {
       return;
     }
     const result = await this.store.saveNote(current.id, this.title().trim(), this.content());
     if (result !== 'ok') {
       this.message.warning(`Your last changes to "${current.title}" could not be saved.`);
     }
-  }
-
-  protected reload(): void {
-    void this.load(this.id(), true);
   }
 
   /** Enter in the title saves now (like Ctrl+S) instead of waiting for the autosave delay. */
@@ -244,13 +260,9 @@ export class NoteEditorComponent {
     const result = await this.store.saveNote(this.id(), this.title().trim(), this.content());
     switch (result) {
       case 'ok':
-        this.conflict.set(false);
         if (!silent) {
           this.message.success('Saved', { nzDuration: 1500 });
         }
-        break;
-      case 'conflict':
-        this.conflict.set(true); // shows the banner; the user's text stays untouched
         break;
       case 'not-found':
         this.message.warning('This note no longer exists');
@@ -267,17 +279,9 @@ export class NoteEditorComponent {
     switch (result) {
       case 'ok':
         break;
-      case 'conflict':
-        this.conflict.set(true); // same banner as a content conflict: reload to get the latest
-        break;
       case 'not-found':
         this.message.warning('This note no longer exists');
         await this.leave();
-        break;
-      case 'invalid':
-        // A notebook or tag was deleted elsewhere: refresh the choices so the pickers are right.
-        this.message.warning('The notebook or a tag no longer exists. The lists were refreshed.');
-        void this.org.load();
         break;
       default:
         this.message.error('Cannot update the note');

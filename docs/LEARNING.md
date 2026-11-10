@@ -435,3 +435,43 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - Let the database do what it is good at (index, rank, similarity) and keep the application for presentation (snippets, highlight).
 - Put the guarantees in the database (a generated column cannot be stale) and prove them with tests.
 - Measure with real numbers (`EXPLAIN ANALYZE`, 20,000 rows): the first fast-looking version was 20x slower than it needed to be in the common case, and only measuring showed it.
+
+## Phase 7 - Local-first (IndexedDB, outbox, synchronization)
+
+**Concepts**
+- **Local-first**: the screen talks to a database ON THE DEVICE (IndexedDB, through Dexie), never to the network. The server is a replica that the app keeps in step in the background. Result: instant UI, works offline, and "save failed because the network dropped" stops existing.
+- **Dexie live queries**: `liveQuery(() => db.notes.toArray())` re-runs when any table it read changes, from any source (the editor, another tab, the sync). `live()` turns it into an Observable, so the stores just subscribe and the screen follows the database by itself.
+- **Outbox (sync queue)**: every change is written to the data AND to an `outbox` table in ONE transaction, so they can never disagree. The engine sends the outbox in batches. `attempted` operations (already handed to the network) are frozen, because the server may have applied them: a retry has to be the same operation (same `opId`) so the server recognizes it. Newer edits go into a separate `pending` operation that can still be merged.
+- **Idempotency**: sending the same operation twice must not apply it twice. The server stores the result per `(user, opId)` and returns it again.
+- **Cursor pull and the settle window**: the client asks "what changed after sequence N?". The sequence is stamped by database triggers. A slow transaction can commit after a faster one that has a higher number, which would let a client skip it forever; so the server only hands out changes older than 2 seconds, and only an uninterrupted prefix of them.
+- **Conflict policy**: stale base version AND a different title/text: the server text is saved as a `NoteRevision` and the newer write wins. Different fields (pin vs text) merge. Nothing is silently lost.
+- **Patches**: an operation sends only the fields that changed (absent = unchanged, `null` = clear), which is what makes merging possible at all.
+
+**Why it is built this way**
+- Client-made GUIDs: a note created offline already has its final id.
+- Triggers for the sequence and for tombstones: any writer (EF, `ExecuteUpdate`, FK `SET NULL`) is covered without remembering to stamp.
+- The app never mixes sources: stores read the local database only. Search and trash are the two exceptions (they need the server) and are online-only on purpose.
+
+**How to verify**
+1. Restart the API (the migration `AddSync` is applied to your dev database) and reload the page with Ctrl+Shift+R. The first load downloads your notes; the line above your email says "All changes synced".
+2. DevTools, Network, set "Offline". The line says "Offline". Edit a note, create one, pin one: all works at once; the line counts "N changes waiting". (Do not reload the page while offline: that needs the PWA, Phase 9.)
+3. Set the network back to "No throttling": within a few seconds the line returns to "All changes synced". Check in pgAdmin: `SELECT id, title FROM notes ORDER BY updated_at DESC`.
+4. Two devices: open the app in two different browsers (or one normal and one private window) with the same account. Take one offline, edit the same note in both, bring it back: the last writer's text stays, the other text is in `note_revisions`, and the page shows a notice.
+5. Sign out while offline with a pending change: a dialog warns that the change would be lost. DevTools, Application, IndexedDB: the `inknote-<id>` database is gone after a real sign-out.
+6. `dotnet test --configuration Release` (243 tests), `ng test --watch=false` (357 tests).
+
+**Pitfalls (met while building)**
+- IndexedDB data is per origin, and a private window has none that lasts: the app says so instead of failing silently.
+- Dexie `transaction()` takes at most 7 tables as arguments; pass an array for more.
+- A live query's first answer is asynchronous: tests must wait for it (`vi.waitFor`), and a promise tied to a superseded request must still be settled (a store method that never resolved hung `Promise.all`; fixed with a `superseded` result).
+- A result that arrives after the browser announced "offline" must not set the status back to "idle" (a race found in the real browser).
+- **Reloading on `/notes/<id>` showed "Cannot load the note"** (found by the user, not by my tests): the editor (a child route) started reading the local database while the page was still opening it. Fix: the page renders its `router-outlet` only after the database is open. Lesson: a component that depends on something asynchronous must not be created before it is ready, and the tests must also cover the entry point a user really uses (a reload on a deep link), not only clicking through the app.
+- A test or script that types into the editor right after navigating must wait for the NEW note's title box: for a few milliseconds the previous note's editor is still on screen.
+- The 2 s settle window makes two devices see each other's change with a small delay; tests set it to 0, and the browser test presses "synchronize now" again like a user.
+
+**Honest limits**: reloading the page offline needs the PWA (Phase 9); search and trash need the server; revisions have no screen yet (Phase 11); a change not yet sent is lost if the user signs out anyway; data on the device is not encrypted; other devices learn about a change by polling (SignalR in Phase 8 makes it immediate).
+
+**Key takeaways**
+- Make the local database the single source for the UI, and move the network behind a queue: failure of the network stops being a UI problem.
+- When two writers can happen at once, decide the rule first (here: last write wins + keep the loser as a revision) and write the tests for it before the UI.
+- Races hide in "who numbers first vs who commits first": put the guarantee where all writers pass (database triggers) and add a safety margin (the settle window).

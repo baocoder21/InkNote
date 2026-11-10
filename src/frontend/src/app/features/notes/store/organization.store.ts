@@ -1,13 +1,12 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
-import { firstValueFrom, forkJoin } from 'rxjs';
+import { Subscription } from 'rxjs';
+import { OrganizationRepository } from '../data/organization-repository';
 import { Notebook, Tag } from '../models/organization.model';
 import { buildNotebookTree, byName, flattenNotebooks } from '../organization/notebook-tree';
-import { OrganizationApi } from '../services/organization-api.service';
 
 interface OrganizationState {
-  notebooks: Notebook[]; // flat, as the API returns them
+  notebooks: Notebook[]; // flat, as stored
   tags: Tag[];
   loading: boolean;
 }
@@ -15,17 +14,14 @@ interface OrganizationState {
 const initialState: OrganizationState = { notebooks: [], tags: [], loading: false };
 
 export type RenameNotebookResult = 'ok' | 'not-found' | 'error';
-// 'not-empty' = the server refused (409): the notebook still has notes or sub-notebooks.
+// 'not-empty' = the notebook still has notes or sub-notebooks.
 export type DeleteNotebookResult = 'ok' | 'not-empty' | 'error';
 export type CreateTagResult = { status: 'ok'; tag: Tag } | { status: 'duplicate' | 'error' };
 
-function statusOf(error: unknown): number | undefined {
-  return error instanceof HttpErrorResponse ? error.status : undefined;
-}
-
 /**
  * Notebooks and tags (the "organization" of notes). Kept apart from NotesStore: it changes
- * rarely, and several components (sidebar, editor) read it.
+ * rarely, and several components (sidebar, editor) read it. Like NotesStore it reads and writes the database
+ * on this device through live queries (see OrganizationRepository).
  */
 export const OrganizationStore = signalStore(
   { providedIn: 'root' },
@@ -37,76 +33,101 @@ export const OrganizationStore = signalStore(
       notebookOptions: computed(() => flattenNotebooks(tree())), // flat + depth, for pickers
     };
   }),
-  withMethods((store, api = inject(OrganizationApi)) => ({
-    async load(): Promise<boolean> {
-      patchState(store, { loading: true });
-      try {
-        // Both requests run in parallel; we continue when both have answered.
-        const { notebooks, tags } = await firstValueFrom(
-          forkJoin({ notebooks: api.listNotebooks(), tags: api.listTags() }),
-        );
-        patchState(store, { notebooks, tags, loading: false });
-        return true;
-      } catch {
-        patchState(store, { loading: false });
-        return false;
-      }
-    },
+  withMethods((store, repo = inject(OrganizationRepository)) => {
+    let notebookWatch: Subscription | null = null;
+    let tagWatch: Subscription | null = null;
 
-    async createNotebook(name: string, parentId: string | null): Promise<Notebook | null> {
-      try {
-        const notebook = await firstValueFrom(api.createNotebook(name, parentId));
-        patchState(store, { notebooks: [...store.notebooks(), notebook] });
-        return notebook;
-      } catch {
-        return null;
-      }
-    },
+    return {
+      /** Starts watching notebooks and tags. Resolves when both first answers are in. */
+      load(): Promise<boolean> {
+        notebookWatch?.unsubscribe();
+        tagWatch?.unsubscribe();
+        patchState(store, { loading: true });
 
-    async renameNotebook(id: string, name: string): Promise<RenameNotebookResult> {
-      const current = store.notebooks().find((n) => n.id === id);
-      if (!current) {
-        return 'not-found';
-      }
-      try {
-        const updated = await firstValueFrom(api.updateNotebook(id, name, current.parentId));
-        patchState(store, { notebooks: store.notebooks().map((n) => (n.id === id ? updated : n)) });
-        return 'ok';
-      } catch (error) {
-        return statusOf(error) === 404 ? 'not-found' : 'error';
-      }
-    },
+        const notebooksReady = new Promise<boolean>((resolve) => {
+          let answered = false;
+          notebookWatch = repo.watchNotebooks().subscribe({
+            next: (notebooks) => {
+              patchState(store, { notebooks });
+              if (!answered) {
+                answered = true;
+                resolve(true);
+              }
+            },
+            error: () => {
+              if (!answered) {
+                answered = true;
+                resolve(false);
+              }
+            },
+          });
+        });
+        const tagsReady = new Promise<boolean>((resolve) => {
+          let answered = false;
+          tagWatch = repo.watchTags().subscribe({
+            next: (tags) => {
+              patchState(store, { tags: [...tags].sort(byName) });
+              if (!answered) {
+                answered = true;
+                resolve(true);
+              }
+            },
+            error: () => {
+              if (!answered) {
+                answered = true;
+                resolve(false);
+              }
+            },
+          });
+        });
 
-    async deleteNotebook(id: string): Promise<DeleteNotebookResult> {
-      try {
-        await firstValueFrom(api.deleteNotebook(id));
-      } catch (error) {
-        const status = statusOf(error);
-        if (status === 409) return 'not-empty';
-        if (status !== 404) return 'error'; // 404: already gone, removing it locally is right
-      }
-      patchState(store, { notebooks: store.notebooks().filter((n) => n.id !== id) });
-      return 'ok';
-    },
+        return Promise.all([notebooksReady, tagsReady]).then(([a, b]) => {
+          patchState(store, { loading: false });
+          return a && b;
+        });
+      },
 
-    async createTag(name: string): Promise<CreateTagResult> {
-      try {
-        const tag = await firstValueFrom(api.createTag(name));
-        patchState(store, { tags: [...store.tags(), tag].sort(byName) });
-        return { status: 'ok', tag };
-      } catch (error) {
-        return { status: statusOf(error) === 409 ? 'duplicate' : 'error' };
-      }
-    },
+      async createNotebook(name: string, parentId: string | null): Promise<Notebook | null> {
+        try {
+          return await repo.createNotebook(name, parentId);
+        } catch {
+          return null;
+        }
+      },
 
-    async deleteTag(id: string): Promise<boolean> {
-      try {
-        await firstValueFrom(api.deleteTag(id));
-      } catch (error) {
-        if (statusOf(error) !== 404) return false;
-      }
-      patchState(store, { tags: store.tags().filter((t) => t.id !== id) });
-      return true;
-    },
-  })),
+      async renameNotebook(id: string, name: string): Promise<RenameNotebookResult> {
+        try {
+          return (await repo.renameNotebook(id, name)) ? 'ok' : 'not-found';
+        } catch {
+          return 'error';
+        }
+      },
+
+      async deleteNotebook(id: string): Promise<DeleteNotebookResult> {
+        try {
+          const result = await repo.deleteNotebook(id);
+          return result === 'not-empty' ? 'not-empty' : 'ok'; // "not found" = already gone: the wish is already true
+        } catch {
+          return 'error';
+        }
+      },
+
+      async createTag(name: string): Promise<CreateTagResult> {
+        try {
+          return await repo.createTag(name);
+        } catch {
+          return { status: 'error' };
+        }
+      },
+
+      async deleteTag(id: string): Promise<boolean> {
+        try {
+          await repo.deleteTag(id);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    };
+  }),
 );

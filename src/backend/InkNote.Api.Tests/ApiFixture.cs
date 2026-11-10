@@ -44,6 +44,9 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // Tests sign in a lot from one IP address: the rate limit must not get in the way
                 // (a dedicated test class turns it down to check that it works).
                 ["RateLimiting:AuthPerMinute"] = "100000",
+                // Changes are normally handed out only after a 2 second "settle window" (see SyncOptions). Tests want to see
+                // them at once; a dedicated test class turns the window on to check that it works.
+                ["Sync:SettleWindow"] = "00:00:00",
             });
             config.AddInMemoryCollection(Settings); // a subclass can override the values above
         });

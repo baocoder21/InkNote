@@ -2,6 +2,7 @@ using InkNote.Api.Common;
 using InkNote.Api.Modules.Auth.Domain;
 using InkNote.Api.Modules.Notebooks.Domain;
 using InkNote.Api.Modules.Notes.Domain;
+using InkNote.Api.Modules.Sync.Domain;
 using InkNote.Api.Modules.Tags.Domain;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -27,6 +28,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
     public DbSet<Notebook> Notebooks => Set<Notebook>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<NoteRevision> NoteRevisions => Set<NoteRevision>();
+    public DbSet<SyncTombstone> SyncTombstones => Set<SyncTombstone>();
+    public DbSet<SyncOperationRecord> SyncOperations => Set<SyncOperationRecord>();
     // No DbSet for NoteTag: it is only reached through Note.Tags.
 
     // Read by the query filters below; EF Core re-evaluates it for every query (it is a
@@ -40,6 +44,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
     /// </summary>
     public IQueryable<Note> TrashedNotes =>
         Notes.IgnoreQueryFilters().Where(n => CurrentUserId != null && n.UserId == CurrentUserId && n.IsDeleted);
+
+    /// <summary>
+    /// ALL the current user's notes, the deleted ones too. Synchronization has to tell other devices about deletions.
+    /// Same idea as TrashedNotes: the owner check is written here, next to the IgnoreQueryFilters.
+    /// </summary>
+    public IQueryable<Note> NotesIncludingDeleted =>
+        Notes.IgnoreQueryFilters().Where(n => CurrentUserId != null && n.UserId == CurrentUserId);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,5 +74,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
             CurrentUserId != null && n.UserId == CurrentUserId && !n.IsDeleted); // owner AND not soft-deleted
         modelBuilder.Entity<Notebook>().HasQueryFilter(n => CurrentUserId != null && n.UserId == CurrentUserId);
         modelBuilder.Entity<Tag>().HasQueryFilter(t => CurrentUserId != null && t.UserId == CurrentUserId);
+        modelBuilder.Entity<NoteRevision>().HasQueryFilter(r => CurrentUserId != null && r.UserId == CurrentUserId);
+        modelBuilder.Entity<SyncTombstone>().HasQueryFilter(t => CurrentUserId != null && t.UserId == CurrentUserId);
+        modelBuilder.Entity<SyncOperationRecord>().HasQueryFilter(r => CurrentUserId != null && r.UserId == CurrentUserId);
     }
 }

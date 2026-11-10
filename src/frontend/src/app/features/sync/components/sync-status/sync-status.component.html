@@ -1,0 +1,12 @@
+<button
+  type="button"
+  class="sync"
+  [class.sync--offline]="state() === 'offline'"
+  [class.sync--error]="state() === 'error'"
+  [attr.aria-label]="'Synchronization: ' + label() + '. Press to synchronize now.'"
+  [title]="lastSyncedAt() ? 'Last synchronized ' + (lastSyncedAt() | date: 'medium') + '. Press to synchronize now.' : 'Press to synchronize now.'"
+  (click)="retry.emit()"
+>
+  <nz-icon [nzType]="icon()" nzTheme="outline" [nzSpin]="state() === 'syncing'" />
+  <span class="sync__label" role="status">{{ label() }}</span>
+</button>

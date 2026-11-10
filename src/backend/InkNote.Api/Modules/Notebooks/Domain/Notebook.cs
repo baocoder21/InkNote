@@ -18,9 +18,9 @@ public sealed class Notebook
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public static Notebook Create(Guid userId, string name, Guid? parentId, DateTimeOffset now) => new()
+    public static Notebook Create(Guid userId, string name, Guid? parentId, DateTimeOffset now, Guid? id = null) => new()
     {
-        Id = Guid.CreateVersion7(),
+        Id = id ?? Guid.CreateVersion7(), // a synchronizing client may choose the id (see Note.Create)
         UserId = userId,
         Name = name,
         ParentId = parentId,

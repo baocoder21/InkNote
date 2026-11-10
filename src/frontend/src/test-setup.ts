@@ -15,3 +15,7 @@ if (!Range.prototype.getClientRects) {
 if (!Range.prototype.getBoundingClientRect) {
   Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
 }
+
+// The tests run without a real browser database: this gives them an in-memory IndexedDB, so that Dexie
+// (the local database the app now reads and writes first) behaves as it does in a browser.
+import 'fake-indexeddb/auto';

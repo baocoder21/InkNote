@@ -36,6 +36,27 @@ function hint(value: boolean | null): boolean {
   }
 }
 
+/**
+ * Who this browser last signed in (id and email: not secrets). It lets the app start while OFFLINE: the session
+ * cannot be renewed without the server, but the user is known, and their notes are on this device.
+ */
+const USER_KEY = 'inknote.user';
+
+function cachedUser(value: AuthUser | null | undefined): AuthUser | null {
+  try {
+    if (value) localStorage.setItem(USER_KEY, JSON.stringify(value));
+    else if (value === null) localStorage.removeItem(USER_KEY);
+    const stored = localStorage.getItem(USER_KEY);
+    const parsed = stored ? (JSON.parse(stored) as Partial<AuthUser>) : null;
+    return parsed?.id && parsed.email ? { id: parsed.id, email: parsed.email } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The request never reached a server: no network, or the server is down. Not the same as "session refused". */
+const isNetworkError = (error: unknown) => error instanceof HttpErrorResponse && error.status === 0;
+
 export type SignInResult =
   | { status: 'ok' }
   // 'invalid' = wrong email/password (login) or fields the server rejected (register: see fieldErrors);
@@ -59,11 +80,13 @@ export const AuthStore = signalStore(
     const accept = (response: AuthResponse) => {
       patchState(store, { user: response.user, accessToken: response.accessToken });
       hint(true);
+      cachedUser(response.user);
     };
 
     const clear = () => {
       patchState(store, { user: null, accessToken: null });
       hint(false);
+      cachedUser(null);
     };
 
     const refreshOnce = async (): Promise<string | null> => {
@@ -71,7 +94,10 @@ export const AuthStore = signalStore(
         const response = await firstValueFrom(api.refresh());
         accept(response);
         return response.accessToken;
-      } catch {
+      } catch (error) {
+        if (isNetworkError(error)) {
+          throw error; // the server is not reachable: that says nothing about the session, which stays
+        }
         clear();
         return null;
       }
@@ -81,7 +107,8 @@ export const AuthStore = signalStore(
      * Gets a new access token with the refresh cookie. If several requests get a 401 at the same
      * moment they all call this, and they all share ONE request: the refresh token is single use,
      * so a second parallel request would be treated as token reuse by the server.
-     * Resolves to the new access token, or null when there is no valid session any more.
+     * Resolves to the new access token, or null when there is no valid session any more. Rejects when the server
+     * cannot be reached (offline): the session is then neither renewed nor ended.
      */
     const refresh = (): Promise<string | null> => {
       refreshInFlight ??= refreshOnce().finally(() => (refreshInFlight = null));
@@ -127,11 +154,23 @@ export const AuthStore = signalStore(
         if (!hint(null)) {
           return false;
         }
-        if (await refresh()) {
+        try {
+          if (await refresh()) {
+            return true;
+          }
+          await sleep(RESTORE_RETRY_MS);
+          return (await refresh()) !== null;
+        } catch {
+          // The server cannot be reached (no network): the session is not over, it just cannot be renewed now.
+          // Carry on as the user this browser knows: the app works from the data on this device, and the token is
+          // renewed the first time the network answers (the interceptor does it when a request gets a 401).
+          const known = cachedUser(undefined);
+          if (!known) {
+            return false;
+          }
+          patchState(store, { user: known });
           return true;
         }
-        await sleep(RESTORE_RETRY_MS);
-        return (await refresh()) !== null;
       },
 
       /** Signs out here and on the server (the refresh token stops working), then reloads at the login page. */

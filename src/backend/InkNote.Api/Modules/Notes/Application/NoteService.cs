@@ -155,6 +155,21 @@ public sealed class NoteService(
         return true;
     }
 
+    /// <summary>The saved older texts of a note (newest first), or null when the note does not exist (a note in the trash counts).</summary>
+    public async Task<IReadOnlyList<NoteRevisionDto>?> GetRevisionsAsync(Guid noteId, CancellationToken ct)
+    {
+        if (!await db.NotesIncludingDeleted.AnyAsync(n => n.Id == noteId, ct))
+        {
+            return null;
+        }
+
+        return await db.NoteRevisions.AsNoTracking()
+            .Where(r => r.NoteId == noteId)
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new NoteRevisionDto(r.Id, r.NoteId, r.Title, r.Content, r.NoteVersion, r.Reason, r.CreatedAt))
+            .ToListAsync(ct);
+    }
+
     // ---- Trash: notes that were deleted (soft) and can still be restored ----
     // The query filter hides deleted notes everywhere, so the trash uses db.TrashedNotes: the
     // current user's notes that ARE deleted (the owner check is written once, in AppDbContext, next

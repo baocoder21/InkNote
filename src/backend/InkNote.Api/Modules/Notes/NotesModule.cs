@@ -1,6 +1,7 @@
 using FluentValidation;
 using InkNote.Api.Modules.Notes.Application;
 using InkNote.Api.Modules.Notes.Contracts;
+using InkNote.Api.Modules.Sync.Contracts;
 
 namespace InkNote.Api.Modules.Notes;
 
@@ -11,6 +12,7 @@ public static class NotesModule
     {
         services.AddScoped<NoteService>(); // one instance per HTTP request
         services.AddScoped<NoteSearchService>();
+        services.AddScoped<ISyncHandler, NoteSyncHandler>(); // lets the Sync module read and change notes
         services.AddScoped<INotebookUsage, NotebookUsage>(); // the contract the Notebooks module uses
         services.AddValidatorsFromAssemblyContaining<CreateNoteRequestValidator>();
         return services;

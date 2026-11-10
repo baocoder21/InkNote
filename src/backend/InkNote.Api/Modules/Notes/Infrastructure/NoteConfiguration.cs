@@ -15,6 +15,13 @@ public sealed class NoteConfiguration : IEntityTypeConfiguration<Note>
     {
         builder.HasKey(n => n.Id);
 
+        // SYNCHRONIZATION. The database stamps every insert and update with the next number of one global sequence
+        // (sync_seq) and the time (sync_at), by a trigger created in the migration "AddSync". A device asks for
+        // "everything after number N". Shadow properties: the domain class does not know them; EF only reads them.
+        builder.Property<long>("SyncSeq").HasColumnName("sync_seq").ValueGeneratedOnAddOrUpdate();
+        builder.Property<DateTimeOffset>("SyncAt").HasColumnName("sync_at").ValueGeneratedOnAddOrUpdate();
+        builder.HasIndex("UserId", "SyncSeq");
+
         builder.Property(n => n.Title).HasMaxLength(NoteLimits.TitleMaxLength).IsRequired();
         builder.Property(n => n.Content).IsRequired(); // unlimited text column in PostgreSQL
 

@@ -88,4 +88,7 @@ internal sealed class TagLookup(AppDbContext db) : ITagLookup
 {
     public Task<int> CountExistingAsync(IReadOnlyCollection<Guid> tagIds, CancellationToken ct) =>
         db.Tags.CountAsync(t => tagIds.Contains(t.Id), ct);
+
+    public async Task<IReadOnlyList<Guid>> FilterExistingAsync(IReadOnlyCollection<Guid> tagIds, CancellationToken ct) =>
+        await db.Tags.Where(t => tagIds.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct);
 }

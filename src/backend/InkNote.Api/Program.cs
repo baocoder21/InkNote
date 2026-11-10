@@ -6,6 +6,8 @@ using InkNote.Api.Modules.Notebooks;
 using InkNote.Api.Modules.Notebooks.Api;
 using InkNote.Api.Modules.Notes;
 using InkNote.Api.Modules.Notes.Api;
+using InkNote.Api.Modules.Sync;
+using InkNote.Api.Modules.Sync.Api;
 using InkNote.Api.Modules.Tags;
 using InkNote.Api.Modules.Tags.Api;
 using InkNote.Api.Persistence;
@@ -38,6 +40,7 @@ builder.Services.AddAuthModule(); // accounts, JWT, "sign in required" by defaul
 builder.Services.AddNotesModule();
 builder.Services.AddNotebooksModule();
 builder.Services.AddTagsModule();
+builder.Services.AddSyncModule(); // push/pull of changes for the devices
 
 // CORS: the browser blocks the Angular dev server (another origin) from calling
 // this API unless the API explicitly allows that origin.
@@ -103,6 +106,7 @@ app.MapAuthEndpoints();
 app.MapNotesEndpoints();
 app.MapNotebooksEndpoints();
 app.MapTagsEndpoints();
+app.MapSyncEndpoints();
 
 app.Run();
 

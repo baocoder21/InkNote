@@ -52,3 +52,6 @@ public sealed record NoteSummaryDto(
 
 // Answer of "empty the trash": how many notes were removed from the database.
 public sealed record EmptyTrashResult(int Deleted);
+
+// A saved older text of a note (see NoteRevision).
+public sealed record NoteRevisionDto(Guid Id, Guid NoteId, string Title, string Content, int NoteVersion, string Reason, DateTimeOffset CreatedAt);

@@ -20,12 +20,12 @@ public sealed class Tag
 
     public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 
-    public static Tag Create(Guid userId, string name, DateTimeOffset now)
+    public static Tag Create(Guid userId, string name, DateTimeOffset now, Guid? id = null)
     {
         var trimmed = name.Trim();
         return new Tag
         {
-            Id = Guid.CreateVersion7(),
+            Id = id ?? Guid.CreateVersion7(), // a synchronizing client may choose the id (see Note.Create)
             UserId = userId,
             Name = trimmed,
             NormalizedName = Normalize(trimmed),

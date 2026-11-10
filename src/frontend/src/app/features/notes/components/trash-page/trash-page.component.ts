@@ -6,7 +6,7 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
 import { NzSpinComponent } from 'ng-zorro-antd/spin';
 import { NoteSummary } from '../../models/note.model';
-import { NotesStore } from '../../store/notes.store';
+import { SyncEngine } from '../../../sync/sync-engine.service';
 import { TrashStore } from '../../store/trash.store';
 import { MarkdownPreviewComponent } from '../markdown-preview/markdown-preview.component';
 
@@ -25,7 +25,7 @@ import { MarkdownPreviewComponent } from '../markdown-preview/markdown-preview.c
 })
 export class TrashPageComponent implements OnInit {
   protected readonly trash = inject(TrashStore);
-  private readonly notes = inject(NotesStore);
+  private readonly engine = inject(SyncEngine);
   private readonly modal = inject(NzModalService);
   private readonly message = inject(NzMessageService);
 
@@ -46,7 +46,9 @@ export class TrashPageComponent implements OnInit {
     event.stopPropagation(); // the button is inside the clickable row
     const result = await this.trash.restore(note.id);
     if (result === 'ok') {
-      await this.notes.loadNotes(); // the note is back in the sidebar
+      // The restored note exists on the server only. A synchronization brings it back to this device, and the
+      // sidebar (which reads this device) then shows it. Not awaited: the user need not wait for the network.
+      void this.engine.syncNow();
       this.message.success(`Restored "${note.title}"`, { nzDuration: 2000 });
     } else if (result === 'not-found') {
       this.message.warning('This note is no longer in the trash');
