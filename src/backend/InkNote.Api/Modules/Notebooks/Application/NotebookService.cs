@@ -1,3 +1,4 @@
+using InkNote.Api.Common;
 using InkNote.Api.Modules.Notebooks.Contracts;
 using InkNote.Api.Modules.Notebooks.Domain;
 using InkNote.Api.Modules.Notes.Contracts;
@@ -11,7 +12,7 @@ public enum NotebookStatus { Ok, NotFound, InvalidParent, NotEmpty }
 public sealed record NotebookResult(NotebookStatus Status, NotebookDto? Notebook = null, string? Message = null);
 
 /// <summary>Use cases for notebooks.</summary>
-public sealed class NotebookService(AppDbContext db, INotebookUsage usage, TimeProvider clock)
+public sealed class NotebookService(AppDbContext db, ICurrentUser user, INotebookUsage usage, TimeProvider clock)
 {
     public async Task<IReadOnlyList<NotebookDto>> ListAsync(CancellationToken ct) =>
         await db.Notebooks
@@ -27,7 +28,7 @@ public sealed class NotebookService(AppDbContext db, INotebookUsage usage, TimeP
             return new NotebookResult(NotebookStatus.InvalidParent, Message: "The parent notebook does not exist.");
         }
 
-        var notebook = Notebook.Create(request.Name.Trim(), request.ParentId, clock.GetUtcNow());
+        var notebook = Notebook.Create(user.RequiredUserId, request.Name.Trim(), request.ParentId, clock.GetUtcNow());
         db.Notebooks.Add(notebook);
         await db.SaveChangesAsync(ct);
         return new NotebookResult(NotebookStatus.Ok, NotebookDto.From(notebook));

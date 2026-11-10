@@ -13,6 +13,9 @@ interface NotesState {
   loadingList: boolean;
   loadingSelected: boolean;
   saving: boolean;
+  // "Rename" in the sidebar: the id of the note whose title box should get the keyboard focus as
+  // soon as the editor shows it. The editor clears it once done.
+  titleFocusFor: string | null;
 }
 
 const initialState: NotesState = {
@@ -21,6 +24,7 @@ const initialState: NotesState = {
   loadingList: false,
   loadingSelected: false,
   saving: false,
+  titleFocusFor: null,
 };
 
 // What a component needs to know to decide which message to show.
@@ -179,6 +183,15 @@ export const NotesStore = signalStore(
        * A tag was deleted on the server (which removed it from every note): forget its id here too,
        * otherwise the next organization update would send an id the server no longer knows (400).
        */
+      /** Asks the editor to put the cursor in the title of note `id` (selecting its text). */
+      requestTitleFocus(id: string): void {
+        patchState(store, { titleFocusFor: id });
+      },
+
+      clearTitleFocus(): void {
+        patchState(store, { titleFocusFor: null });
+      },
+
       forgetTag(tagId: string): void {
         const without = (ids: string[]) => ids.filter((id) => id !== tagId);
         const open = store.selected();

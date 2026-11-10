@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { API_BASE_URL } from '../../../../core/api.config';
 import { provideUi } from '../../../../core/ui.providers';
 import { Note } from '../../models/note.model';
+import { NotesStore } from '../../store/notes.store';
 import { AUTOSAVE_DELAY_MS, NoteEditorComponent } from './note-editor.component';
 
 const URL = `${API_BASE_URL}/api/notes`;
@@ -118,6 +119,42 @@ describe('NoteEditorComponent', () => {
     // After a successful save the draft matches the server again (afterEach verifies that no
     // further request is pending).
     expect(t.titleInput().value).toBe('Hello, edited');
+  });
+
+  describe('rename request from the sidebar', () => {
+    const store = () => TestBed.inject(NotesStore);
+
+    it('puts the cursor in the title and selects its text, then clears the request', async () => {
+      store().requestTitleFocus(NOTE.id);
+      await t.settle();
+      await sleep(10); // the focus happens one tick later, after ngModel wrote the text
+
+      const box = t.titleInput();
+      expect(document.activeElement).toBe(box);
+      expect([box.selectionStart, box.selectionEnd]).toEqual([0, box.value.length]);
+      expect(store().titleFocusFor()).toBeNull();
+    });
+
+    it('ignores a request for another note (it stays pending for that note)', async () => {
+      store().requestTitleFocus('another-note');
+      await t.settle();
+      await sleep(10);
+
+      expect(document.activeElement).not.toBe(t.titleInput());
+      expect(store().titleFocusFor()).toBe('another-note');
+    });
+  });
+
+  it('Enter in the title saves right away (without waiting for the autosave delay)', async () => {
+    t.typeTitle('Renamed');
+    await t.settle();
+
+    t.titleInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+
+    const request = t.http.expectOne(`${URL}/${NOTE.id}`);
+    expect(request.request.body).toEqual({ title: 'Renamed', content: '# Body', version: 1 });
+    request.flush({ ...NOTE, title: 'Renamed', version: 2 });
+    await t.settle();
   });
 
   it('shows the conflict banner when the server answers 409', async () => {

@@ -49,3 +49,6 @@ public sealed record NoteSummaryDto(
     bool IsPinned,
     NoteStatus Status,
     IReadOnlyList<Guid> TagIds);
+
+// Answer of "empty the trash": how many notes were removed from the database.
+public sealed record EmptyTrashResult(int Deleted);

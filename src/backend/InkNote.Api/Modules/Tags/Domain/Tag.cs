@@ -10,18 +10,23 @@ public sealed class Tag
     private Tag() { }
 
     public Guid Id { get; private set; }
+
+    // The owner (nullable only for rows that existed before accounts; see ILegacyDataAdopter).
+    public Guid? UserId { get; private set; }
+
     public string Name { get; private set; } = string.Empty;
     public string NormalizedName { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
 
     public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 
-    public static Tag Create(string name, DateTimeOffset now)
+    public static Tag Create(Guid userId, string name, DateTimeOffset now)
     {
         var trimmed = name.Trim();
         return new Tag
         {
             Id = Guid.CreateVersion7(),
+            UserId = userId,
             Name = trimmed,
             NormalizedName = Normalize(trimmed),
             CreatedAt = now,

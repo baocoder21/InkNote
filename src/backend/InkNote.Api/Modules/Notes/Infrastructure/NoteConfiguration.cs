@@ -1,9 +1,11 @@
+using InkNote.Api.Modules.Auth.Domain;
 using InkNote.Api.Modules.Notebooks.Domain;
 using InkNote.Api.Modules.Notes.Application;
 using InkNote.Api.Modules.Notes.Domain;
 using InkNote.Api.Modules.Tags.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using NpgsqlTypes;
 
 namespace InkNote.Api.Modules.Notes.Infrastructure;
 
@@ -20,10 +22,29 @@ public sealed class NoteConfiguration : IEntityTypeConfiguration<Note>
         // changed the row first, 0 rows match and EF throws DbUpdateConcurrencyException.
         builder.Property(n => n.Version).IsConcurrencyToken();
 
-        // Soft delete: every query on Notes automatically adds "WHERE NOT is_deleted".
-        builder.HasQueryFilter(n => !n.IsDeleted);
+        // The query filter (owner AND not soft-deleted) is defined in AppDbContext: EF Core allows one filter
+        // per entity and it needs the current user, which only the context knows.
 
         builder.HasIndex(n => n.UpdatedAt); // the list is sorted by UpdatedAt
+
+        // FULL-TEXT SEARCH. "search_vector" is a column the DATABASE computes (GENERATED ... STORED) from the
+        // title and the content every time they change, so it can never be stale. A tsvector is a list of the
+        // words of a text (normalized, with positions). "simple" = no stemming and no stop words: PostgreSQL has
+        // no Vietnamese dictionary, but Vietnamese words are separated by spaces, which is all "simple" needs.
+        // f_unaccent makes the search ignore accents; setweight makes a hit in the title (A) count more than a
+        // hit in the content (B). It is a SHADOW property: the column exists, the Note class does not know it.
+        builder.Property<NpgsqlTsVector>(NoteSearch.VectorProperty)
+            .HasColumnName("search_vector")
+            .HasComputedColumnSql(
+                "setweight(to_tsvector('simple', f_unaccent(title)), 'A') || setweight(to_tsvector('simple', f_unaccent(content)), 'B')",
+                stored: true);
+        // GIN = an inverted index: word -> the rows that contain it. This is what makes a search fast.
+        // (The two trigram indexes for typo tolerance are expression indexes: see the migration.)
+        builder.HasIndex(NoteSearch.VectorProperty).HasMethod("gin");
+
+        // Owner: deleting a user deletes their notes. The index serves "all notes of this user".
+        builder.HasOne<AppUser>().WithMany().HasForeignKey(n => n.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(n => n.UserId);
 
         // Stored as its name ("OnHold") rather than 0..4: readable in the database, and
         // reordering the enum can never silently change what existing rows mean.

@@ -1,0 +1,63 @@
+@if (loading() && results().length === 0) {
+  <div class="state"><nz-spin nzSimple /></div>
+} @else if (failed() && results().length === 0) {
+  <p class="state state--text" role="alert">The search failed. Check that the backend is running and try again.</p>
+} @else if (results().length === 0) {
+  <p class="state state--text">No note matches "{{ query() }}".</p>
+} @else {
+  <p class="count" aria-live="polite">{{ total() }} {{ total() === 1 ? 'result' : 'results' }}</p>
+
+  <ul class="list" aria-label="Search results">
+    @for (result of results(); track result.id) {
+      <li>
+        <!-- preserve: opening a note keeps ?q= (and ?tag=) in the URL, so the results stay while you read -->
+        <a class="item" [routerLink]="['/notes', result.id]" queryParamsHandling="preserve" routerLinkActive="item--active">
+          <span class="item__title">
+            @for (part of result.title; track $index) {
+              @if (part.match) {
+                <mark>{{ part.text }}</mark>
+              } @else {
+                <span>{{ part.text }}</span>
+              }
+            }
+          </span>
+
+          @if (result.snippet.length > 0) {
+            <span class="item__snippet">
+              @for (part of result.snippet; track $index) {
+                @if (part.match) {
+                  <mark>{{ part.text }}</mark>
+                } @else {
+                  <span>{{ part.text }}</span>
+                }
+              }
+            </span>
+          }
+
+          @if (hasMeta(result)) {
+            <span class="item__meta">
+              @if (pathOf(result); as path) {
+                <span class="item__path" [title]="path">{{ path }}</span>
+              }
+              @if (result.status !== 'None') {
+                <span class="chip chip--status" [attr.data-status]="result.status">{{ statusLabel(result.status) }}</span>
+              }
+              @for (name of tagsOf(result); track name) {
+                <span class="chip chip--tag">{{ name }}</span>
+              }
+            </span>
+          }
+        </a>
+      </li>
+    }
+  </ul>
+
+  @if (hasMore()) {
+    <button type="button" class="more" [disabled]="loadingMore()" (click)="showMore.emit()">
+      {{ loadingMore() ? 'Loading...' : 'Show more' }}
+    </button>
+  }
+  @if (failed()) {
+    <p class="state state--text" role="alert">Could not load more results.</p>
+  }
+}

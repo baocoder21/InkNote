@@ -64,6 +64,16 @@ describe('NotesStore', () => {
     await promise;
   }
 
+  it('requestTitleFocus remembers which note should get its title focused, clearTitleFocus forgets it', () => {
+    expect(store.titleFocusFor()).toBeNull();
+
+    store.requestTitleFocus('a');
+    expect(store.titleFocusFor()).toBe('a');
+
+    store.clearTitleFocus();
+    expect(store.titleFocusFor()).toBeNull();
+  });
+
   it('loadNotes asks for every note and fills the list', async () => {
     const promise = store.loadNotes();
     const request = http.expectOne(URL);

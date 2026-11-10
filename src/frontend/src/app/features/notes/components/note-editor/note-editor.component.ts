@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   InjectionToken,
   computed,
   effect,
@@ -10,6 +11,7 @@ import {
   linkedSignal,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -124,6 +126,9 @@ export class NoteEditorComponent {
   // True after the server answered 409: someone else changed this note.
   protected readonly conflict = signal(false);
 
+  // The title box (it only exists while a note is shown).
+  private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
+
   // Changes on every edit while there is something to save; null when there is nothing.
   private readonly pendingEdit = computed(() =>
     this.isDirty() ? { title: this.title(), content: this.content() } : null,
@@ -135,6 +140,23 @@ export class NoteEditorComponent {
     effect(() => {
       const id = this.id();
       untracked(() => void this.load(id, false));
+    });
+
+    // "Rename" in the sidebar: when the title box of the requested note is on screen, focus it and
+    // select its text, so typing replaces the name. The request names a note id so that a click on
+    // another note (still loading) cannot steal the focus.
+    effect(() => {
+      const target = this.store.titleFocusFor();
+      const box = this.titleInput();
+      if (target === null || !box || target !== this.id() || this.store.selected()?.id !== target) {
+        return;
+      }
+      untracked(() => this.store.clearTitleFocus());
+      // One tick later: ngModel writes the text into the box asynchronously, and select() needs it.
+      setTimeout(() => {
+        box.nativeElement.focus();
+        box.nativeElement.select();
+      });
     });
 
     // AUTOSAVE (RxJS): every edit restarts the timer; when the user pauses for
@@ -189,6 +211,12 @@ export class NoteEditorComponent {
 
   protected reload(): void {
     void this.load(this.id(), true);
+  }
+
+  /** Enter in the title saves now (like Ctrl+S) instead of waiting for the autosave delay. */
+  protected onTitleEnter(event: Event): void {
+    event.preventDefault();
+    void this.save();
   }
 
   protected onSaveShortcut(event: Event): void {

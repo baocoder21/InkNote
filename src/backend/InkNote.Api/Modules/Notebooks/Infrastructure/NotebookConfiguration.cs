@@ -1,3 +1,4 @@
+using InkNote.Api.Modules.Auth.Domain;
 using InkNote.Api.Modules.Notebooks.Application;
 using InkNote.Api.Modules.Notebooks.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -19,5 +20,9 @@ public sealed class NotebookConfiguration : IEntityTypeConfiguration<Notebook>
             .HasForeignKey(n => n.ParentId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(n => n.ParentId);
+
+        // Owner: deleting a user deletes their notebooks.
+        builder.HasOne<AppUser>().WithMany().HasForeignKey(n => n.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(n => n.UserId);
     }
 }

@@ -1,3 +1,4 @@
+using InkNote.Api.Common;
 using InkNote.Api.Modules.Tags.Contracts;
 using InkNote.Api.Modules.Tags.Domain;
 using InkNote.Api.Persistence;
@@ -11,7 +12,7 @@ public enum TagStatus { Ok, NotFound, Duplicate }
 public sealed record TagResult(TagStatus Status, TagDto? Tag = null);
 
 /// <summary>Use cases for tags.</summary>
-public sealed class TagService(AppDbContext db, TimeProvider clock)
+public sealed class TagService(AppDbContext db, ICurrentUser user, TimeProvider clock)
 {
     public async Task<IReadOnlyList<TagDto>> ListAsync(CancellationToken ct) =>
         await db.Tags
@@ -22,7 +23,7 @@ public sealed class TagService(AppDbContext db, TimeProvider clock)
 
     public async Task<TagResult> CreateAsync(CreateTagRequest request, CancellationToken ct)
     {
-        var tag = Tag.Create(request.Name, clock.GetUtcNow());
+        var tag = Tag.Create(user.RequiredUserId, request.Name, clock.GetUtcNow());
 
         // Friendly pre-check; the unique index below is the real guarantee.
         if (await db.Tags.AnyAsync(t => t.NormalizedName == tag.NormalizedName, ct))

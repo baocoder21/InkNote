@@ -21,14 +21,45 @@
           />
           <nz-icon [nzType]="row.expanded ? 'folder-open' : 'folder'" nzTheme="outline" />
           <span class="row__name">{{ row.notebook.name }}</span>
-          <button
-            type="button"
-            class="row__more"
-            [attr.aria-label]="'Actions for folder ' + row.notebook.name"
-            (click)="openMenu($event, row, menu)"
-          >
-            <nz-icon nzType="ellipsis" nzTheme="outline" />
-          </button>
+          <!-- Quick actions: on hover, on keyboard focus and always on the current folder. -->
+          <span class="row__actions">
+            <button
+              type="button"
+              class="row__btn"
+              title="New note in this folder"
+              [attr.aria-label]="'New note in folder ' + row.notebook.name"
+              (click)="act($event, newNoteIn, row.notebook)"
+            >
+              <nz-icon nzType="file-add" nzTheme="outline" />
+            </button>
+            <button
+              type="button"
+              class="row__btn"
+              title="New subfolder"
+              [attr.aria-label]="'New subfolder in ' + row.notebook.name"
+              (click)="act($event, newFolderIn, row.notebook)"
+            >
+              <nz-icon nzType="folder-add" nzTheme="outline" />
+            </button>
+            <button
+              type="button"
+              class="row__btn"
+              title="Rename"
+              [attr.aria-label]="'Rename folder ' + row.notebook.name"
+              (click)="act($event, renameFolder, row.notebook)"
+            >
+              <nz-icon nzType="edit" nzTheme="outline" />
+            </button>
+            <button
+              type="button"
+              class="row__btn"
+              title="More actions"
+              [attr.aria-label]="'Actions for folder ' + row.notebook.name"
+              (click)="openMenu($event, row, menu)"
+            >
+              <nz-icon nzType="ellipsis" nzTheme="outline" />
+            </button>
+          </span>
         </div>
       } @else {
         <div
@@ -40,26 +71,57 @@
         >
           <!-- preserve: opening a note keeps ?tag= in the URL, so a tag filter stays on -->
           <a class="row__link" [routerLink]="['/notes', row.note.id]" queryParamsHandling="preserve">
-            <nz-icon
-              class="row__chevron row__chevron--hidden"
-              nzType="right"
-              nzTheme="outline"
-            />
-            @if (row.note.isPinned) {
-              <nz-icon class="row__pin" nzType="pushpin" nzTheme="fill" aria-label="Pinned" />
-            } @else {
-              <nz-icon nzType="file-text" nzTheme="outline" />
+            <span class="row__line">
+              <nz-icon
+                class="row__chevron row__chevron--hidden"
+                nzType="right"
+                nzTheme="outline"
+              />
+              @if (row.note.isPinned) {
+                <nz-icon class="row__pin" nzType="pushpin" nzTheme="fill" aria-label="Pinned" />
+              } @else {
+                <nz-icon nzType="file-text" nzTheme="outline" />
+              }
+              <span class="row__name">{{ row.note.title }}</span>
+            </span>
+
+            <!-- Status and tags, visible without opening the note. Only drawn when there is any. -->
+            @if (row.note.status !== 'None' || row.note.tagIds.length > 0) {
+              <span class="row__meta">
+                @if (row.note.status !== 'None') {
+                  <span class="chip chip--status" [attr.data-status]="row.note.status">
+                    {{ statusLabel(row.note.status) }}
+                  </span>
+                }
+                @for (name of shownTags(row.note); track name) {
+                  <span class="chip chip--tag">{{ name }}</span>
+                }
+                @if (hiddenTagCount(row.note) > 0) {
+                  <span class="chip chip--more" [title]="allTags(row.note)">+{{ hiddenTagCount(row.note) }}</span>
+                }
+              </span>
             }
-            <span class="row__name">{{ row.note.title }}</span>
           </a>
-          <button
-            type="button"
-            class="row__more"
-            [attr.aria-label]="'Actions for note ' + row.note.title"
-            (click)="openMenu($event, row, menu)"
-          >
-            <nz-icon nzType="ellipsis" nzTheme="outline" />
-          </button>
+          <span class="row__actions">
+            <button
+              type="button"
+              class="row__btn"
+              title="Rename"
+              [attr.aria-label]="'Rename note ' + row.note.title"
+              (click)="act($event, renameNote, row.note)"
+            >
+              <nz-icon nzType="edit" nzTheme="outline" />
+            </button>
+            <button
+              type="button"
+              class="row__btn"
+              title="More actions"
+              [attr.aria-label]="'Actions for note ' + row.note.title"
+              (click)="openMenu($event, row, menu)"
+            >
+              <nz-icon nzType="ellipsis" nzTheme="outline" />
+            </button>
+          </span>
         </div>
       }
     </li>
@@ -84,6 +146,9 @@
         <nz-icon nzType="delete" nzTheme="outline" /> Delete folder
       </li>
     } @else if (targetNote(); as note) {
+      <li nz-menu-item (click)="run(renameNote, note)">
+        <nz-icon nzType="edit" nzTheme="outline" /> Rename
+      </li>
       <li nz-menu-item (click)="run(togglePin, note)">
         <nz-icon nzType="pushpin" nzTheme="outline" />
         {{ note.isPinned ? 'Unpin' : 'Pin to top' }}

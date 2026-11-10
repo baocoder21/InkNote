@@ -1,5 +1,5 @@
 <div class="layout">
-  <app-notes-sidebar class="sidebar" [tagId]="tag() ?? null" />
+  <app-notes-sidebar class="sidebar" [tagId]="tag() ?? null" [q]="q() ?? null" />
 
   <section class="pane">
     <router-outlet />

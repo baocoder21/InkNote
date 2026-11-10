@@ -1,0 +1,53 @@
+// ---- status and tag chips ----
+.chip {
+  flex: none;
+  max-width: 7rem;
+  padding: 0 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.15rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // Status: a colored dot + colored text on a faint tint of the same color. The color comes from
+  // --ink-status-* (defined in every theme).
+  &--status {
+    --chip-color: var(--ink-text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--chip-color);
+    background: color-mix(in srgb, var(--chip-color) 12%, transparent);
+
+    &::before {
+      content: '';
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 50%;
+      background: var(--chip-color);
+    }
+
+    &[data-status='Active'] {
+      --chip-color: var(--ink-status-active);
+    }
+    &[data-status='OnHold'] {
+      --chip-color: var(--ink-status-onhold);
+    }
+    &[data-status='Completed'] {
+      --chip-color: var(--ink-status-completed);
+    }
+    &[data-status='Dropped'] {
+      --chip-color: var(--ink-status-dropped);
+    }
+  }
+
+  &--tag,
+  &--more {
+    color: var(--ink-text-muted);
+    background: var(--ink-bg-hover);
+    border: 1px solid var(--ink-border-strong);
+    line-height: calc(1.15rem - 2px);
+  }
+}

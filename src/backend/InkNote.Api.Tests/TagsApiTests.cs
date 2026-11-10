@@ -8,7 +8,7 @@ namespace InkNote.Api.Tests;
 
 public sealed class TagsApiTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
-    private readonly HttpClient _client = api.CreateClient();
+    private readonly HttpClient _client = api.CreateUserClient();
 
     // Tag names must be unique across the shared test database, so each test uses its own prefix.
     private async Task<TagDto> CreateTagAsync(string name)

@@ -1,0 +1,23 @@
+<div class="search">
+  <nz-icon class="search__icon" nzType="search" nzTheme="outline" />
+  <input
+    class="search__input"
+    type="search"
+    placeholder="Search notes"
+    aria-label="Search notes"
+    autocomplete="off"
+    spellcheck="false"
+    [maxLength]="maxLength"
+    [value]="value()"
+    (input)="onInput($event)"
+    (keydown.escape)="cleared.emit()"
+  />
+  @if (value()) {
+    <button type="button" class="search__clear" title="Clear search" aria-label="Clear search" (click)="cleared.emit()">
+      <nz-icon nzType="close" nzTheme="outline" />
+    </button>
+  }
+</div>
+@if (tooShort()) {
+  <p class="search__hint">Type at least {{ minLength }} characters to search.</p>
+}

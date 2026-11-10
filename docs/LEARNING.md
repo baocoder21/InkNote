@@ -299,3 +299,139 @@ The user asked for three themes: **Dark = Nord** (background #2e3440, text #d8de
 - A small feature is a vertical slice: schema, API, validation, client, UI and tests all move together.
 - "Looks like the preview" is mostly choosing the right granularity: text pieces (HighlightStyle) vs whole lines (decorations).
 - When a test fails for a reason you did not expect, ask whether it found a real bug: here it exposed the missing GFM dialect and the 500-instead-of-400.
+
+## Phase 4 - a monochrome preview
+
+**Request**: the preview shows plain "black" text in all three themes; only the editor uses many colors to tell syntax apart.
+
+**Idea**: a new design token `--ink-preview-text` (defined in all three themes) and `.markdown-body` uses only it. Without color, hierarchy comes from size, weight, underline and background boxes.
+- Code blocks are colored by Shiki through CSS variables (`--ink-code-token-*`). Variables are inherited, so redefining them *inside* `.markdown-body` makes the preview's code monochrome while any other use keeps the theme colors: **scope an override instead of editing the shared definition**.
+- Mermaid bakes colors into its SVG, so its theme variables were switched to the same token.
+- "Black" in the dark theme would be invisible (#000 on #2e3440), so Dark uses its light text color; the rule is "the neutral text color of the theme", not literally black.
+
+**Verify**: open a note with headings, bold, a link, a code block and a diagram in each theme (palette button in the sidebar): the right pane is one color, the left pane keeps its colors.
+
+## Phase 4 - sidebar actions, status and tags on each row
+
+**Request**: options right after a click (rename for files and folders; new file / new folder inside a folder), status and tags visible on every note in the sidebar, titles in bold.
+
+**Concepts**
+- **Discoverability**: a right-click menu is invisible. Small buttons on the row (shown on hover, on keyboard focus and always on the selected row) make the same actions visible. CSS only: `.row:hover .row__actions`, `.row--active .row__actions`.
+- **`stopPropagation` on nested buttons**: a button inside a clickable row would also trigger the row's click (opening the note, expanding the folder). The shared helper `act()` stops that.
+- **Data the row does not own**: a note stores tag IDS; the row needs NAMES. The tree gets the tag list as an input and builds an id -> name map with `computed`. Ids of deleted tags are skipped.
+- **Rename without a second save path**: the list has no note content, so renaming from the sidebar by PUT would need a GET first and could race with the editor's autosave. Instead the sidebar opens the note and asks the editor (through a field in the store) to focus and select the title; the existing autosave does the rest.
+- **Small text needs contrast too**: the 11px status chips were measured (colored text on a 12% tint of itself) and darkened in Light/Warm until all were >= 4.5:1.
+
+**How to verify**: click a folder: new note / new subfolder / rename / "..." appear on its row; click a note: rename and "..." appear; Rename puts the cursor in the title with the text selected, typing and Enter saves it and the sidebar updates; give a note a status and tags in the editor: they appear under its title in the sidebar. `ng test --watch=false` -> 141 pass.
+
+## Phase 4 - the trash (restore and delete forever)
+
+**Why it was cheap**: notes were already *soft-deleted* (`IsDeleted = true`, row kept, hidden by a query filter). The trash is only a way to see and undo that.
+
+**Concepts**
+- **Turning a query filter off on purpose**: `IgnoreQueryFilters()` makes EF show the hidden rows again. The rule used here: every trash query also says `Where(n => n.IsDeleted)`, so a typo in an id can never touch a live note. There is a test for exactly that ("the trash endpoints never show or touch a live note").
+- **Resource design**: the trash is its own collection, `/api/notes/trash`, with `POST .../restore` for the action that is not a plain CRUD verb. `{id:guid}` on the normal route makes sure "trash" is never read as a note id.
+- **`ExecuteDeleteAsync`**: one SQL `DELETE ... WHERE` without loading entities. The foreign key's `ON DELETE CASCADE` removes the note's tag links, which a test checks directly in the database.
+- **Soft vs hard, again**: restoring bumps `Version` and `UpdatedAt` (a sync client must notice); deleting for good removes the row, so Phase 7 will need a record that it existed (a tombstone).
+- **Which actions deserve a confirmation?** Only the irreversible ones. Moving to the trash and restoring are reversible, so they just show a message.
+- **Two stores**: `TrashStore` is separate from `NotesStore` so deleted notes cannot leak into the sidebar; the page that restores a note tells `NotesStore` to reload.
+
+**How to verify**
+1. Restart the API (new endpoints). Delete a note from the sidebar: it asks "Move to trash?", disappears, and the **Trash** link at the bottom shows a count.
+2. Open Trash: the list on the left, the read-only content on the right. **Restore** puts the note back in its folder with its tags and status; **Delete forever** and **Empty trash** ask first.
+3. `dotnet test --configuration Release` -> 41 pass; `ng test --watch=false` -> 158 pass.
+
+## Phase 5 - Authentication (accounts, JWT, refresh tokens, per-user data)
+
+**Goal**: every person sees only their own notes. That needs four things: knowing who is calling (authentication), refusing everyone else (authorization), keeping each person's rows apart, and a front end that lives with all that.
+
+**Concepts**
+- **Authentication vs authorization**: "who are you?" (sign in) vs "what may you do?" (here: only touch your own data). A 401 means "I do not know who you are", a 404 on someone else's note means "for you it does not exist".
+- **Never store a password**: Identity stores a salted, deliberately slow HASH. Login hashes the typed password and compares. Even an unknown email is hashed, so the response time cannot reveal which emails exist.
+- **JWT access token**: `header.payload.signature`, the payload holds claims (`sub` = user id, `exp` = expiry). Anyone can read it, nobody can change it (the signature is made with `Jwt:Key`, which only the server has). The API checks signature, issuer, audience and expiry on every request, so it never asks the database "who is this?". Price: it cannot be revoked, so it lives only 15 minutes.
+- **Refresh token**: a random string that only asks for a new access token. Stored as a hash, single use ("rotation"), grouped in a family per sign-in. If an old one shows up again, someone copied it: the whole family is revoked. Racing requests are settled by one `UPDATE ... WHERE revoked_at IS NULL`.
+- **Where tokens live in the browser**: localStorage is readable by any script on the page (an XSS bug would leak the token), so the access token stays in memory only, and the refresh token is an `HttpOnly` cookie that scripts cannot read, sent only to `/api/auth`, `SameSite=Lax`. A reload loses the memory, so the app asks `/refresh` once at start-up.
+- **Interceptor**: one function every HTTP request passes through. It adds `Authorization: Bearer ...`, and on a 401 renews the token and repeats the request once. Several failing requests share ONE refresh (the token is single use).
+- **Route guard**: keeps signed-out visitors out of the pages, with `returnUrl` to come back. It is only comfort; the real protection is the server. `returnUrl` comes from the address bar, so it is accepted only if it is a path inside the app (open-redirect protection).
+- **Global query filter**: `HasQueryFilter(x => x.UserId == CurrentUserId)` makes EF add the owner condition to EVERY query on that entity. Forgetting it in one service becomes impossible. Danger: `IgnoreQueryFilters()` drops it too, so the trash goes through `AppDbContext.TrashedNotes`, which has the owner check written next to it.
+- **Secure by default**: a fallback authorization policy requires sign-in on every endpoint; open ones are marked `AllowAnonymous()`. A test calls all data endpoints without a token.
+- **Rate limiting**: 20 register/login/refresh requests per minute per IP; wrong passwords also lock an account after 5 attempts.
+
+**One-time setup on a new machine** (the signing key is a secret, so it is not in the repository). On this machine it is already set.
+```
+cd src/backend/InkNote.Api
+dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters>"
+```
+(for example the output of `openssl rand -base64 64`). Without it the API refuses to start and says so.
+
+**How to verify**
+1. Stop the running API, then start it again (`dotnet run --launch-profile http` in `src/backend/InkNote.Api`); the migration `AddAuthAndOwnership` is already applied to your database.
+2. Open http://localhost:4200: you land on the sign-in page. Choose **Create an account**: the FIRST account adopts the notes that existed before accounts.
+3. Reload the page: you stay signed in. Sign out (bottom of the sidebar), create a second account: it sees nothing of the first.
+4. In DevTools, Application tab: localStorage has no token; the cookie `inknote_refresh` is HttpOnly.
+5. `dotnet test --configuration Release` (96 tests) and `ng test --watch=false` (217 tests).
+
+**Pitfalls**
+- Only read configuration lazily (options bound at first use): in tests the settings arrive after `Program.cs` has started.
+- Two browser tabs refreshing together send the same single-use token: the server tolerates a short grace period, and the front end retries once.
+- Identity's password errors have codes ("PasswordTooShort") that the API groups under the `password` field for the form.
+- A test that waits for expiry must warm the server up first, otherwise the first slow request eats the token's short life.
+
+**Key takeaways**
+- Security is mostly "make the safe thing the default": sign-in required unless stated, filtering done once in the context, secrets only in secret stores.
+- Short-lived + revocable beats long-lived: a stolen access token expires soon, a stolen refresh token is detected when used twice.
+- Test the attacks, not just the happy path: forged tokens, other users, replayed refresh tokens, too many attempts.
+
+## Phase 5 addendum - "Keep me signed in" (remember me)
+
+**What it means technically**: a cookie normally lives until the browser closes (a *session cookie*). Adding an expiry date (`Expires`) makes it a *persistent cookie* that survives restarts. "Remember me" is exactly the choice between the two, plus how long the SERVER keeps accepting the token.
+
+**Concepts**
+- **Session vs persistent cookie**: no `Expires` = deleted when the browser closes; with `Expires` = kept until that date. The server cannot see the difference when the cookie comes back, so it ALSO stores the choice (`is_persistent`) and gives non-remembered tokens a short server-side life (12 h): a browser that is never closed, or a copied cookie, still stops working.
+- **The choice must survive rotation**: every refresh issues a new token. If the new one forgot the choice, a remembered sign-in would silently turn into a session one (or the reverse). The new token inherits `IsPersistent` from the one it replaces.
+- **A real EF Core trap**: for a `bool` with `HasDefaultValue(true)`, EF cannot tell "false on purpose" from "not set" (both are `false`), so it leaves the column out of the INSERT and the database writes `true`. The default is therefore only in the MIGRATION (to fill rows that already exist), never in the model. A test stores a not-remembered token and checks its 12-hour lifetime.
+- **Safe default**: the box is off. Tick it only on a device that is yours.
+- **What it does not change**: the access token stays in memory and lasts 15 minutes whatever you choose; only the refresh cookie differs.
+
+**How to verify**
+1. Restart the API (the migration `AddRefreshTokenPersistence` is already applied) and reload the page.
+2. Sign in WITHOUT the box: in DevTools, Application, Cookies, `inknote_refresh` shows "Session" as expiry. Close the whole browser and reopen the app: you must sign in again.
+3. Sign in WITH the box: the cookie expires in about 30 days; after closing and reopening the browser you are still signed in.
+4. `dotnet test --configuration Release` (101 tests), `ng test --watch=false` (220 tests).
+
+## Phase 6 - Full-text search
+
+**Goal**: type a few letters and get the right notes, ranked, with the matching words marked, ignoring case and accents and surviving a small typo.
+
+**Why not `LIKE '%word%'`?** It reads every row (no index can help a pattern that starts with `%`), cannot rank, does not ignore accents and is not typo-tolerant. Measured on 20,000 notes (`EXPLAIN ANALYZE`): the indexed full-text query for a rare word took **0.14 ms**, a sequential scan of the same condition **1305 ms**, `ILIKE '%quokka%'` **253 ms**.
+
+**Concepts**
+- **`tsvector`**: a text turned into a sorted list of normalized words with positions. **`tsquery`**: what to look for (`prog:*` = a word starting with "prog"; `a:* & b:*` = both). `@@` asks "does this vector satisfy this query?". The `simple` configuration only lowercases and splits; PostgreSQL has no Vietnamese dictionary (stemming and stop words are for English, French...), but Vietnamese words are separated by spaces, which `simple` handles.
+- **Generated column** (`GENERATED ALWAYS AS (...) STORED`): the DATABASE recomputes `search_vector` whenever title or content change, so the index can never be out of date and no application code has to remember it. A test edits a note and checks the old word is gone and the new one found.
+- **GIN index** ("generalized inverted index"): word -> rows that contain it, like the index at the back of a book. Look-ups touch only those rows.
+- **`unaccent` and why a wrapper function**: `unaccent('đường')` = `duong`. PostgreSQL only allows IMMUTABLE functions in generated columns and indexes, and `unaccent()` is merely STABLE (it depends on a dictionary that could change), so the migration creates `f_unaccent()` declared IMMUTABLE. Always use the SAME function in the index, in the column and in the query; the planner only uses an expression index when the query writes exactly that expression.
+- **Trigrams (`pg_trgm`)**: a word is cut into groups of 3 letters; two words are "similar" when they share many groups. `word_similarity('meting', 'weekly meeting notes')` is 0.67, above the 0.6 threshold, so the operator `'meting' <% text` is true. Index support needs the column on the RIGHT side of `<%` (a test of mine had it backwards and the plan showed no index).
+- **Match every WORD, judge typos PER WORD**: first version compared the whole phrase for similarity, so a note about "alpha gamma" matched "alpha beta". A test showed it. Now each word is its own condition, chained with AND.
+- **Measure, then optimize**: first version took 2-6 s when a word matched most of the table. Causes: the rank formula was computed twice per row, and comparing the query with the whole content is expensive. Fix: cheap rank only in ORDER BY, find the page's ids first, then read the content of just those notes. Now ~0.1 s.
+- **Safe by construction**: query words are letters and digits only, so none of the tsquery operator characters (`& | ! ( ) : * '`) can get in, and the text goes to the database as a parameter, never glued into SQL. Tests throw operators, quotes and `'; DROP TABLE notes; --` at it.
+- **Highlighting without HTML**: the server cuts title and snippet into `{text, match}` parts, finding matches in the UNACCENTED text and mapping positions back to the original (a map from each normalized character to its original index), so "đường" is marked with its accents. The client draws `<mark>`. No `innerHTML`, so a note containing `<script>` shows it as text.
+- **Search state in the URL**: `?q=` like the tag filter; typing is debounced and replaces the history entry. A subtle bug avoided: if the box followed every URL change, a slow navigation could overwrite letters typed in the meantime; it follows only changes this component did not make.
+
+**Honest limits** (measured): one missing/extra letter in longer words works ("meting", "kubernets"); swapped or changed letters in short words do not ("recieve", "budjet"); words under 4 letters match only by their beginning; a query that matches almost every note is slower (the rank must be computed for all of them).
+
+**How to verify**
+1. Restart the API (the migration `AddFullTextSearch` is already applied; it also enabled the `unaccent` and `pg_trgm` extensions).
+2. Create a few notes ("Ghi chú cuộc họp" with "đường Đồng Khởi" in the body, "Weekly meeting notes"...). Type in the box under the InkNote header: `duong dong khoi`, `meting`, `prog`... Results replace the tree, the words are highlighted, the URL gets `?q=`. Esc or the x brings the tree back; click a result: the note opens and the results stay.
+3. In pgAdmin: `EXPLAIN ANALYZE SELECT id FROM notes WHERE search_vector @@ to_tsquery('simple', 'meeting:*')` (add `SET enable_seqscan = off;` first on a small table) and look for `Bitmap Index Scan on ix_notes_search_vector`.
+4. `dotnet test --configuration Release` (175 tests), `ng test --watch=false` (258 tests).
+
+**Pitfalls**
+- A near-empty table is read sequentially (cheaper than an index): to see the index, forbid it for one check (`enable_seqscan = off`) or test with thousands of rows.
+- A lone surrogate (half an emoji) makes `string.Normalize` throw: handle surrogates separately.
+- `HasComputedColumnSql` + a function: the function must exist BEFORE the column is added (the migration creates it first).
+- EF Core cannot describe expression indexes in the model: they live only in the migration (`migrationBuilder.Sql`).
+
+**Key takeaways**
+- Let the database do what it is good at (index, rank, similarity) and keep the application for presentation (snippets, highlight).
+- Put the guarantees in the database (a generated column cannot be stale) and prove them with tests.
+- Measure with real numbers (`EXPLAIN ANALYZE`, 20,000 rows): the first fast-looking version was 20x slower than it needed to be in the common case, and only measuring showed it.

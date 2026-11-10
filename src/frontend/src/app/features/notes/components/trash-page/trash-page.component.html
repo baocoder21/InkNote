@@ -1,0 +1,72 @@
+<section class="trash">
+  <header class="head">
+    <div>
+      <h2 class="head__title">Trash</h2>
+      <p class="head__hint">
+        Deleted notes wait here and show up nowhere else. Restore a note, or delete it forever.
+      </p>
+    </div>
+    <button
+      nz-button
+      nzDanger
+      type="button"
+      [disabled]="trash.items().length === 0"
+      (click)="confirmEmpty()"
+    >
+      <nz-icon nzType="delete" nzTheme="outline" /> Empty trash
+    </button>
+  </header>
+
+  @if (trash.loading() && trash.items().length === 0) {
+    <div class="state"><nz-spin nzSimple /></div>
+  } @else if (trash.items().length === 0) {
+    <div class="state state--empty">
+      <nz-icon nzType="delete" nzTheme="outline" />
+      <p>The trash is empty.</p>
+    </div>
+  } @else {
+    <div class="body">
+      <ul class="list" aria-label="Deleted notes">
+        @for (note of trash.items(); track note.id) {
+          <li class="item" [class.item--selected]="note.id === trash.selected()?.id">
+            <button type="button" class="item__main" (click)="open(note)">
+              <span class="item__title">{{ note.title }}</span>
+              <span class="item__date">Deleted {{ note.updatedAt | date: 'medium' }}</span>
+            </button>
+            <span class="item__actions">
+              <button
+                type="button"
+                class="btn"
+                title="Restore"
+                [attr.aria-label]="'Restore note ' + note.title"
+                (click)="restore($event, note)"
+              >
+                <nz-icon nzType="undo" nzTheme="outline" /> Restore
+              </button>
+              <button
+                type="button"
+                class="btn btn--danger"
+                title="Delete forever"
+                [attr.aria-label]="'Delete note ' + note.title + ' forever'"
+                (click)="confirmPurge($event, note)"
+              >
+                <nz-icon nzType="delete" nzTheme="outline" />
+              </button>
+            </span>
+          </li>
+        }
+      </ul>
+
+      <article class="preview" aria-label="Preview of the selected deleted note">
+        @if (trash.loadingSelected()) {
+          <div class="state"><nz-spin nzSimple /></div>
+        } @else if (trash.selected(); as note) {
+          <h3 class="preview__title">{{ note.title }}</h3>
+          <app-markdown-preview [source]="note.content" />
+        } @else {
+          <p class="preview__hint">Select a note to see what it contains.</p>
+        }
+      </article>
+    </div>
+  }
+</section>

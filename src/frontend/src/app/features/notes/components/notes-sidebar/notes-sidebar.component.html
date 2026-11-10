@@ -32,6 +32,8 @@
     </span>
   </header>
 
+  <app-search-box [value]="searchText()" (valueChange)="searchText.set($event)" (cleared)="clearSearch()" />
+
   @if (activeTag(); as tag) {
     <div class="filter">
       <nz-icon nzType="tag" nzTheme="outline" />
@@ -43,7 +45,20 @@
   }
 
   <div class="tree-area">
-    @if (store.loadingList() && store.notes().length === 0) {
+    @if (search.active()) {
+      <app-search-results
+        [results]="search.results()"
+        [total]="search.total()"
+        [query]="search.query()"
+        [loading]="search.loading()"
+        [loadingMore]="search.loadingMore()"
+        [failed]="search.failed()"
+        [hasMore]="search.hasMore()"
+        [notebooks]="org.notebookOptions()"
+        [tags]="org.tags()"
+        (showMore)="search.loadMore()"
+      />
+    } @else if (store.loadingList() && store.notes().length === 0) {
       <div class="state"><nz-spin nzSimple /></div>
     } @else if (rows().length === 0) {
       <p class="state">
@@ -57,11 +72,13 @@
       <app-explorer-tree
         [rows]="rows()"
         [currentFolderId]="currentFolderId()"
+        [tags]="org.tags()"
         (folderClick)="onFolderClick($event)"
         (newNoteIn)="newNoteIn($event)"
         (newFolderIn)="newFolder($event)"
         (renameFolder)="renameFolder($event)"
         (deleteFolder)="confirmDeleteFolder($event)"
+        (renameNote)="renameNote($event)"
         (togglePin)="togglePin($event)"
         (deleteNote)="confirmDeleteNote($event)"
       />
@@ -95,6 +112,26 @@
       </li>
     </ul>
   </section>
+
+  <a class="trash-link" routerLink="/notes/trash" routerLinkActive="trash-link--active">
+    <nz-icon nzType="delete" nzTheme="outline" />
+    <span class="trash-link__name">Trash</span>
+    @if (trash.items().length > 0) {
+      <span class="trash-link__count" [attr.aria-label]="trash.items().length + ' notes in the trash'">
+        {{ trash.items().length }}
+      </span>
+    }
+  </a>
+
+  @if (auth.user(); as user) {
+    <div class="account">
+      <nz-icon nzType="user" nzTheme="outline" />
+      <span class="account__email" [title]="user.email">{{ user.email }}</span>
+      <button type="button" class="account__logout" title="Sign out" aria-label="Sign out" (click)="auth.logout()">
+        <nz-icon nzType="logout" nzTheme="outline" />
+      </button>
+    </div>
+  }
 </div>
 
 <nz-dropdown-menu #themeMenu="nzDropdownMenu">

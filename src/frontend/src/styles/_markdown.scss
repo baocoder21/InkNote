@@ -1,6 +1,26 @@
 // Styles for the rendered Markdown preview. They are global (not in a component) because the
 // HTML is inserted with innerHTML and therefore does not carry Angular's style attributes.
 .markdown-body {
+  // The preview is deliberately ONE color (the editor next to it carries the syntax colors):
+  // headings, bold, italic, links, quotes, code and code blocks all use --ink-preview-text and are
+  // told apart by size, weight, underline and background instead.
+  color: var(--ink-preview-text);
+
+  // Shiki writes color: var(--ink-code-*) on every token of a code block: make them all the same.
+  --ink-code-foreground: var(--ink-preview-text);
+  --ink-code-token-constant: var(--ink-preview-text);
+  --ink-code-token-string: var(--ink-preview-text);
+  --ink-code-token-comment: var(--ink-preview-text);
+  --ink-code-token-keyword: var(--ink-preview-text);
+  --ink-code-token-parameter: var(--ink-preview-text);
+  --ink-code-token-function: var(--ink-preview-text);
+  --ink-code-token-string-expression: var(--ink-preview-text);
+  --ink-code-token-punctuation: var(--ink-preview-text);
+  --ink-code-token-link: var(--ink-preview-text);
+  --ink-code-token-inserted: var(--ink-preview-text);
+  --ink-code-token-deleted: var(--ink-preview-text);
+  --ink-code-token-changed: var(--ink-preview-text);
+
   padding: 1rem 1.25rem;
   line-height: 1.65;
   overflow-wrap: anywhere;
@@ -23,39 +43,20 @@
     border-bottom: 1px solid var(--ink-border);
   }
 
-  // The same colors as the editor's Markdown syntax (see --ink-syn-* in _tokens.scss).
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    color: var(--ink-heading);
-  }
-
-  strong {
-    color: var(--ink-syn-strong);
-  }
-
-  em {
-    color: var(--ink-syn-emphasis);
-  }
-
   a {
-    color: var(--ink-link);
+    color: inherit;
+    text-decoration: underline; // the only thing that marks a link now that it has no color
   }
 
   blockquote {
     margin: 1em 0;
     padding: 0 1em;
-    color: var(--ink-syn-quote);
-    border-left: 4px solid var(--ink-syn-mark);
+    border-left: 4px solid var(--ink-border-strong);
   }
 
   code {
     padding: 0.15em 0.35em;
     border-radius: 4px;
-    color: var(--ink-syn-code);
     background: var(--ink-bg-code);
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     font-size: 0.9em;

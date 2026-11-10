@@ -9,14 +9,19 @@ public sealed class Notebook
     private Notebook() { }
 
     public Guid Id { get; private set; }
+
+    // The owner (nullable only for rows that existed before accounts; see ILegacyDataAdopter).
+    public Guid? UserId { get; private set; }
+
     public string Name { get; private set; } = string.Empty;
     public Guid? ParentId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public static Notebook Create(string name, Guid? parentId, DateTimeOffset now) => new()
+    public static Notebook Create(Guid userId, string name, Guid? parentId, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(),
+        UserId = userId,
         Name = name,
         ParentId = parentId,
         CreatedAt = now,

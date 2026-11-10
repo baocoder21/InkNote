@@ -29,6 +29,16 @@
 
   --ink-text: #d8dee9;
   --ink-text-muted: #98a3b8;
+  // The ONE color of the rendered preview (the editor is the colorful side). Black would vanish on
+  // this background, so the dark theme uses its normal light text.
+  --ink-preview-text: #d8dee9;
+  --ink-bg-mark: rgba(235, 203, 139, 0.3); // the search words highlighted in the results
+
+  // Note status (the colored chips in the sidebar tree).
+  --ink-status-active: #a3be8c;
+  --ink-status-onhold: #ebcb8b;
+  --ink-status-completed: #88c0d0;
+  --ink-status-dropped: #ee9aa1;
 
   --ink-bg-hover: rgba(216, 222, 233, 0.07);
   --ink-bg-selected: rgba(136, 192, 208, 0.2);
@@ -74,6 +84,13 @@
 
   --ink-text: #4d699b;
   --ink-text-muted: #655f84;
+  --ink-preview-text: #26231d; // near-black, warm
+  --ink-bg-mark: rgba(214, 140, 20, 0.32);
+
+  --ink-status-active: #3f5a24;
+  --ink-status-onhold: #7a3700;
+  --ink-status-completed: #1f5a76;
+  --ink-status-dropped: #a32535;
 
   --ink-bg-hover: rgba(77, 105, 155, 0.08);
   --ink-bg-selected: rgba(168, 70, 107, 0.14);
@@ -118,6 +135,13 @@
 
   --ink-text: #dc347f;
   --ink-text-muted: #62666d;
+  --ink-preview-text: #1c1f23; // near-black
+  --ink-bg-mark: rgba(255, 196, 0, 0.4);
+
+  --ink-status-active: #1f5c35;
+  --ink-status-onhold: #843b04;
+  --ink-status-completed: #145796;
+  --ink-status-dropped: #ac1f25;
 
   --ink-bg-hover: rgba(0, 0, 0, 0.05);
   --ink-bg-selected: rgba(27, 101, 168, 0.14);

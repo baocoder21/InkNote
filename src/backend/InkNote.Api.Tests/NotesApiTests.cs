@@ -10,7 +10,7 @@ namespace InkNote.Api.Tests;
 
 public sealed class NotesApiTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
-    private readonly HttpClient _client = api.CreateClient();
+    private readonly HttpClient _client = api.CreateUserClient();
 
     // Each test creates its own notes, so tests do not depend on each other.
     private async Task<NoteDto> CreateNoteAsync(string title = "Title", string content = "Content")

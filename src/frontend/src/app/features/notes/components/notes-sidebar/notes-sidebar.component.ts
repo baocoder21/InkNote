@@ -3,19 +3,21 @@ import {
   Component,
   computed,
   effect,
+  InjectionToken,
   inject,
   input,
   signal,
   untracked,
 } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { NzContextMenuService, NzDropdownDirective, NzDropdownMenuComponent } from 'ng-zorro-antd/dropdown';
 import { NzIconDirective } from 'ng-zorro-antd/icon';
 import { NzMenuDirective, NzMenuItemComponent } from 'ng-zorro-antd/menu';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
 import { NzSpinComponent } from 'ng-zorro-antd/spin';
-import { firstValueFrom } from 'rxjs';
+import { debounceTime, distinctUntilChanged, firstValueFrom, map } from 'rxjs';
 import { THEME_OPTIONS, ThemeService } from '../../../../core/theme.service';
 import { NoteSummary } from '../../models/note.model';
 import { Notebook, ORGANIZATION_LIMITS, Tag } from '../../models/organization.model';
@@ -23,10 +25,24 @@ import { buildExplorerRows, buildTagRows } from '../../organization/explorer-row
 import { ancestorIds } from '../../organization/notebook-tree';
 import { NotesStore } from '../../store/notes.store';
 import { OrganizationStore } from '../../store/organization.store';
+import { SearchStore } from '../../store/search.store';
+import { AuthStore } from '../../../auth/store/auth.store';
+import { TrashStore } from '../../store/trash.store';
 import { ExplorerTreeComponent } from '../explorer-tree/explorer-tree.component';
 import { NameDialogComponent, NameDialogData } from '../name-dialog/name-dialog.component';
+import { SearchBoxComponent } from '../search-box/search-box.component';
+import { SearchResultsComponent } from '../search-results/search-results.component';
 
 const EXPANDED_KEY = 'inknote.expandedFolders';
+
+/**
+ * How long to wait after the last keystroke before searching (and writing ?q= to the URL). An
+ * InjectionToken so that tests can shorten it.
+ */
+export const SEARCH_DEBOUNCE_MS = new InjectionToken<number>('SEARCH_DEBOUNCE_MS', {
+  providedIn: 'root',
+  factory: () => 250,
+});
 
 /**
  * "Container" component: the one sidebar. A toolbar to create notes and folders, the tree of
@@ -37,6 +53,7 @@ const EXPANDED_KEY = 'inknote.expandedFolders';
   selector: 'app-notes-sidebar',
   imports: [
     RouterLink,
+    RouterLinkActive,
     NzIconDirective,
     NzSpinComponent,
     NzDropdownDirective,
@@ -44,6 +61,8 @@ const EXPANDED_KEY = 'inknote.expandedFolders';
     NzMenuDirective,
     NzMenuItemComponent,
     ExplorerTreeComponent,
+    SearchBoxComponent,
+    SearchResultsComponent,
   ],
   templateUrl: './notes-sidebar.component.html',
   styleUrl: './notes-sidebar.component.scss',
@@ -52,15 +71,21 @@ const EXPANDED_KEY = 'inknote.expandedFolders';
 export class NotesSidebarComponent {
   // The tag filter (?tag=... in the URL), passed down by the page.
   readonly tagId = input<string | null>(null);
+  // The search text (?q=... in the URL), passed down by the page.
+  readonly q = input<string | null>(null);
 
   protected readonly store = inject(NotesStore);
   protected readonly org = inject(OrganizationStore);
+  protected readonly trash = inject(TrashStore);
+  protected readonly search = inject(SearchStore);
+  protected readonly auth = inject(AuthStore);
   protected readonly theme = inject(ThemeService);
   protected readonly themes = THEME_OPTIONS;
   private readonly router = inject(Router);
   private readonly modal = inject(NzModalService);
   private readonly message = inject(NzMessageService);
   private readonly contextMenu = inject(NzContextMenuService);
+  private readonly searchDelay = inject(SEARCH_DEBOUNCE_MS);
 
   /** Folders that are open in the tree. Remembered between visits (see persistExpanded). */
   private readonly expanded = signal<ReadonlySet<string>>(this.loadExpanded());
@@ -95,7 +120,45 @@ export class NotesSidebarComponent {
   // The target of the tag menu (same idea as the tree's shared menu).
   protected readonly menuTag = signal<Tag | null>(null);
 
+  // ---- search ----
+  // What is in the box. The URL (?q=) is the source of truth for WHAT is searched; the box is what the
+  // user is typing right now, which runs a little ahead of the URL (see the debounce below).
+  protected readonly searchText = signal('');
+  // The last text THIS component wrote to the URL. When ?q= changes to something else (the Back button,
+  // a link) the box follows it; when it is just our own value coming back, the box is left alone, so a
+  // slow navigation can never overwrite what the user has typed since.
+  private lastPushedQuery: string | null = null;
+
   constructor() {
+    // The URL changed from outside: show it in the box.
+    effect(() => {
+      const fromUrl = this.q() ?? '';
+      untracked(() => {
+        if (fromUrl !== this.lastPushedQuery) {
+          this.searchText.set(fromUrl);
+        }
+        this.lastPushedQuery = fromUrl;
+      });
+    });
+
+    // What is searched is decided by the URL and the tag filter. (The store ignores answers to old queries.)
+    effect(() => {
+      const query = this.q() ?? '';
+      const tag = this.tagId();
+      untracked(() => void this.search.search(query, tag));
+    });
+
+    // Typing: wait until the user pauses, then write the text to the URL (replacing the entry: every
+    // letter must not become a step of the Back button).
+    toObservable(this.searchText)
+      .pipe(
+        debounceTime(this.searchDelay),
+        map((text) => text.trim()),
+        distinctUntilChanged(),
+        takeUntilDestroyed(),
+      )
+      .subscribe((text) => this.pushQuery(text));
+
     // When a note is opened (or moved to another folder): that folder becomes the current one
     // and the tree opens up to it, so the open note is always visible.
     effect(() => {
@@ -111,6 +174,20 @@ export class NotesSidebarComponent {
         }
       });
     });
+  }
+
+  /** Empties the box and shows the folder tree again, at once (no debounce). */
+  protected clearSearch(): void {
+    this.searchText.set('');
+    this.pushQuery('');
+  }
+
+  private pushQuery(text: string): void {
+    if (text === (this.q() ?? '')) {
+      return; // the URL already says this
+    }
+    this.lastPushedQuery = text;
+    void this.router.navigate([], { queryParams: { q: text || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
   // ---- notes ----
@@ -133,6 +210,18 @@ export class NotesSidebarComponent {
     await this.newNote();
   }
 
+  /**
+   * Rename = open the note and put the cursor in its title with the text selected. The title is
+   * edited (and autosaved) in ONE place, the editor, so there is no second way to save a title
+   * that could race with the editor's own autosave.
+   */
+  protected async renameNote(note: NoteSummary): Promise<void> {
+    this.store.requestTitleFocus(note.id);
+    // Keeps ?tag= like a normal click on the row. Already open: nothing to navigate, the request
+    // alone makes the editor focus its title.
+    await this.router.navigate(['/notes', note.id], { queryParamsHandling: 'preserve' });
+  }
+
   protected async togglePin(note: NoteSummary): Promise<void> {
     const result = await this.store.updateOrganization(note.id, {
       notebookId: note.notebookId,
@@ -150,8 +239,8 @@ export class NotesSidebarComponent {
   protected confirmDeleteNote(note: NoteSummary): void {
     this.modal.confirm({
       nzTitle: 'Delete note',
-      nzContent: `Delete "${note.title}"? It will disappear from your notes.`,
-      nzOkText: 'Delete',
+      nzContent: `Move "${note.title}" to the trash? You can restore it from there.`,
+      nzOkText: 'Move to trash',
       nzOkDanger: true,
       nzCancelText: 'Cancel',
       nzOnOk: () => this.deleteNote(note),
@@ -164,7 +253,8 @@ export class NotesSidebarComponent {
       this.message.error('Cannot delete the note');
       return;
     }
-    this.message.success('Note deleted', { nzDuration: 1500 });
+    this.message.success('Note moved to the trash', { nzDuration: 1500 });
+    void this.trash.load(); // refreshes the count next to "Trash"
     if (wasOpen) {
       await this.router.navigate(['/notes'], { queryParamsHandling: 'preserve' });
     }

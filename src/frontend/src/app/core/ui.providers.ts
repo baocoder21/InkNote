@@ -12,10 +12,14 @@ import {
   FolderAddOutline,
   FolderOpenOutline,
   FolderOutline,
+  LogoutOutline,
   PushpinFill,
   PushpinOutline,
   RightOutline,
+  SearchOutline,
   TagOutline,
+  UndoOutline,
+  UserOutline,
 } from '@ant-design/icons-angular/icons';
 import { provideNzNoAnimation } from 'ng-zorro-antd/core/animation';
 import { en_US, provideNzI18n } from 'ng-zorro-antd/i18n';
@@ -47,10 +51,14 @@ export function provideUi(): (Provider | EnvironmentProviders)[] {
       FolderAddOutline,
       FolderOpenOutline,
       FolderOutline,
+      LogoutOutline,
       PushpinFill,
       PushpinOutline,
       RightOutline,
+      SearchOutline,
       TagOutline,
+      UndoOutline,
+      UserOutline,
     ]),
     // We do not install @angular/animations, so ng-zorro runs without its own animations.
     provideNzNoAnimation(),

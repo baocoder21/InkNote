@@ -1,0 +1,77 @@
+<div class="page">
+  <form class="card" novalidate (ngSubmit)="submit()" [formGroup]="form">
+    <h1 class="brand">
+      <nz-icon nzType="edit" nzTheme="outline" />
+      InkNote
+    </h1>
+    <h2 class="title">{{ isRegister() ? 'Create your account' : 'Sign in' }}</h2>
+
+    @if (serverError(); as message) {
+      <p class="error error--box" role="alert">{{ message }}</p>
+    }
+
+    <label class="field">
+      <span class="field__label">Email</span>
+      <input
+        #emailInput
+        nz-input
+        type="email"
+        formControlName="email"
+        autocomplete="username"
+        [attr.aria-invalid]="emailError() ? 'true' : null"
+      />
+      @if (emailError(); as message) {
+        <span class="error" role="alert">{{ message }}</span>
+      }
+    </label>
+
+    <label class="field">
+      <span class="field__label">Password</span>
+      <input
+        nz-input
+        type="password"
+        formControlName="password"
+        [autocomplete]="isRegister() ? 'new-password' : 'current-password'"
+        [attr.aria-invalid]="passwordError() ? 'true' : null"
+      />
+      @if (isRegister() && !passwordError()) {
+        <span class="hint">At least {{ passwordMin }} characters. A long phrase is better than a short complicated word.</span>
+      }
+      @if (passwordError(); as message) {
+        <span class="error" role="alert">{{ message }}</span>
+      }
+    </label>
+
+    @if (isRegister()) {
+      <label class="field">
+        <span class="field__label">Repeat the password</span>
+        <input nz-input type="password" formControlName="confirm" autocomplete="new-password" />
+        @if (confirmError(); as message) {
+          <span class="error" role="alert">{{ message }}</span>
+        }
+      </label>
+    }
+
+    <label class="remember">
+      <input type="checkbox" formControlName="remember" />
+      <span class="remember__text">
+        Keep me signed in on this device
+        <span class="hint">For 30 days, even after closing the browser. Leave it off on a shared computer.</span>
+      </span>
+    </label>
+
+    <button nz-button nzType="primary" type="submit" class="submit" [disabled]="busy()">
+      {{ busy() ? 'Please wait...' : isRegister() ? 'Create account' : 'Sign in' }}
+    </button>
+
+    <p class="switch">
+      @if (isRegister()) {
+        Already have an account?
+        <a routerLink="/login" [queryParams]="{ returnUrl: returnUrl() }" queryParamsHandling="merge">Sign in</a>
+      } @else {
+        New here?
+        <a routerLink="/register" [queryParams]="{ returnUrl: returnUrl() }" queryParamsHandling="merge">Create an account</a>
+      }
+    </p>
+  </form>
+</div>

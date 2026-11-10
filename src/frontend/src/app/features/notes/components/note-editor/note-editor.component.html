@@ -19,11 +19,13 @@
 
     <header class="head">
       <input
+        #titleInput
         class="head__title"
         placeholder="Untitled"
         aria-label="Note title"
         maxlength="200"
         [(ngModel)]="title"
+        (keydown.enter)="onTitleEnter($event)"
       />
     </header>
 

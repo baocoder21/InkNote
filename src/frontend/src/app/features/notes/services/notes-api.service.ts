@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from '../../../core/api.config';
@@ -9,6 +9,7 @@ import {
   UpdateNoteOrganizationRequest,
   UpdateNoteRequest,
 } from '../models/note.model';
+import { SearchResponse } from '../models/search.model';
 
 /** Thin wrapper over the backend REST API. It only does HTTP: no state, no UI logic. */
 @Injectable({ providedIn: 'root' })
@@ -40,5 +41,39 @@ export class NotesApi {
 
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.url}/${id}`);
+  }
+
+  /** Full-text search. The server pages the results (20 per page by default). */
+  search(query: string, options: { tagId?: string | null; page?: number } = {}): Observable<SearchResponse> {
+    let params = new HttpParams().set('q', query).set('page', options.page ?? 1);
+    if (options.tagId) {
+      params = params.set('tagId', options.tagId);
+    }
+    return this.http.get<SearchResponse>(`${this.url}/search`, { params });
+  }
+
+  // ---- Trash (notes deleted with delete(), which only hides them) ----
+
+  listTrash(): Observable<NoteSummary[]> {
+    return this.http.get<NoteSummary[]>(`${this.url}/trash`);
+  }
+
+  /** A deleted note with its content, to look at it before restoring. */
+  getTrashed(id: string): Observable<Note> {
+    return this.http.get<Note>(`${this.url}/trash/${id}`);
+  }
+
+  restore(id: string): Observable<Note> {
+    return this.http.post<Note>(`${this.url}/trash/${id}/restore`, null);
+  }
+
+  /** Removes one trashed note from the database for good. */
+  purge(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.url}/trash/${id}`);
+  }
+
+  /** Removes every trashed note for good; answers how many. */
+  emptyTrash(): Observable<{ deleted: number }> {
+    return this.http.delete<{ deleted: number }>(`${this.url}/trash`);
   }
 }

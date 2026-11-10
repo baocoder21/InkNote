@@ -1,16 +1,19 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { API_BASE_URL } from '../../../../core/api.config';
 import { NzContextMenuService } from 'ng-zorro-antd/dropdown';
 import { NzModalService } from 'ng-zorro-antd/modal';
+import { HARD_NAVIGATE } from '../../../../core/page-navigation';
 import { ThemeService } from '../../../../core/theme.service';
 import { provideUi } from '../../../../core/ui.providers';
+import { AUTH_URL } from '../../../auth/services/auth-api.service';
+import { AuthStore } from '../../../auth/store/auth.store';
 import { NotesStore } from '../../store/notes.store';
 import { OrganizationStore } from '../../store/organization.store';
-import { NotesSidebarComponent } from './notes-sidebar.component';
+import { NotesSidebarComponent, SEARCH_DEBOUNCE_MS } from './notes-sidebar.component';
 
 const NOTES = `${API_BASE_URL}/api/notes`;
 const NOTEBOOKS = `${API_BASE_URL}/api/notebooks`;
@@ -37,6 +40,7 @@ const FULL = (id: string, title: string, notebookId: string | null) => ({
 });
 
 describe('NotesSidebarComponent', () => {
+  const hardNavigations: string[] = [];
   let fixture: ComponentFixture<NotesSidebarComponent>;
   let http: HttpTestingController;
   const el = () => fixture.nativeElement as HTMLElement;
@@ -58,10 +62,20 @@ describe('NotesSidebarComponent', () => {
 
   beforeEach(async () => {
     localStorage.clear(); // the open folders are remembered there
+    hardNavigations.length = 0;
     await TestBed.configureTestingModule({
       imports: [NotesSidebarComponent],
       // A catch-all route so that navigating to /notes/<id> in the tests does not fail.
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([{ path: '**', children: [] }]), provideUi(), NzModalService, NzContextMenuService],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([{ path: '**', children: [] }]),
+        provideUi(),
+        NzModalService,
+        NzContextMenuService,
+        { provide: HARD_NAVIGATE, useValue: (url: string) => hardNavigations.push(url) },
+        { provide: SEARCH_DEBOUNCE_MS, useValue: 80 }, // shorter than the real 250 ms, long enough not to be flaky
+      ],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(NotesSidebarComponent);
@@ -72,7 +86,7 @@ describe('NotesSidebarComponent', () => {
     http.expectOne(NOTES).flush([
       summary('n1', 'Plan', 'w', { tagIds: ['t1'] }),
       summary('n2', 'Roadmap', 'p'),
-      summary('n3', 'Loose', null),
+      summary('n3', 'Loose', null, { status: 'Active', tagIds: ['t2'] }),
     ]);
     http.expectOne(NOTEBOOKS).flush([
       { id: 'w', name: 'Work', parentId: null },
@@ -265,6 +279,42 @@ describe('NotesSidebarComponent', () => {
     expect(rowNames()).toEqual(['[F] Work', '[F] Projects', '[N] Plan', '[N] Loose']);
   });
 
+  it('each note row shows its status and its tag names (looked up from the tag list)', () => {
+    const chips = (selector: string) =>
+      Array.from(row('Loose').querySelectorAll(selector)).map((e) => e.textContent!.trim());
+
+    expect(chips('.chip--status')).toEqual(['Active']);
+    expect(chips('.chip--tag')).toEqual(['urgent']); // t2 = "urgent"
+  });
+
+  it('Rename on a note opens it and asks the editor to focus its title', async () => {
+    const store = TestBed.inject(NotesStore);
+    const router = TestBed.inject(Router);
+
+    row('Loose').querySelector<HTMLButtonElement>('.row__btn[title="Rename"]')!.click();
+    await settle();
+
+    expect(store.titleFocusFor()).toBe('n3');
+    expect(router.url).toBe('/notes/n3');
+  });
+
+  it('shows who is signed in and signs out from the account row', async () => {
+    expect(el().querySelector('.account')).toBeNull(); // nobody signed in
+
+    const login = TestBed.inject(AuthStore).login({ email: 'ann@example.com', password: 'whatever whatever', rememberMe: false });
+    http.expectOne(`${AUTH_URL}/login`).flush({ accessToken: 't', expiresInSeconds: 900, user: { id: 'u1', email: 'ann@example.com' } });
+    await login;
+    await settle();
+    expect(el().querySelector('.account__email')!.textContent).toContain('ann@example.com');
+
+    el().querySelector<HTMLButtonElement>('button[aria-label="Sign out"]')!.click();
+    http.expectOne(`${AUTH_URL}/logout`).flush(null, { status: 204, statusText: 'No Content' });
+    await sleep(0);
+
+    expect(TestBed.inject(AuthStore).isSignedIn()).toBe(false);
+    expect(hardNavigations).toEqual(['/login']);
+  });
+
   it('deletes a note after the user confirms', async () => {
     row('Work').click();
     await settle();
@@ -287,5 +337,146 @@ describe('NotesSidebarComponent', () => {
     await settle();
 
     expect(rowNames()).not.toContain('[N] Plan');
+
+    // The note went to the trash: the sidebar asks for the trash again and shows the count.
+    (await expectRequest(`${NOTES}/trash`)).flush([summary('n1', 'Plan', 'w')]);
+    await sleep(0);
+    await settle();
+    expect(el().querySelector('.trash-link__count')!.textContent!.trim()).toBe('1');
+  });
+
+  describe('search', () => {
+    const SEARCH = `${NOTES}/search`;
+    const box = () => el().querySelector<HTMLInputElement>('input[type="search"]')!;
+    const hit = (id: string, title: string) => ({
+      id,
+      title: [{ text: title, match: false }],
+      snippet: [{ text: 'a snippet', match: false }],
+      updatedAt: '2026-01-01T00:00:00Z',
+      notebookId: null,
+      isPinned: false,
+      status: 'None',
+      tagIds: [],
+    });
+    const expectSearch = (q: string) =>
+      vi.waitFor(() => http.expectOne((r) => r.url === SEARCH && r.params.get('q') === q));
+
+    async function type(text: string) {
+      box().value = text;
+      box().dispatchEvent(new Event('input'));
+      await settle();
+    }
+
+    /** What the notes page does: the URL changed, so the new ?q= is handed down. */
+    async function urlSays(q: string | null) {
+      fixture.componentRef.setInput('q', q);
+      await settle();
+    }
+
+    it('has a search box, and the folder tree stays while the box is empty', () => {
+      expect(box()).not.toBeNull();
+      expect(el().querySelector('app-search-results')).toBeNull();
+      expect(rowNames().length).toBeGreaterThan(0);
+    });
+
+    it('waits for a pause in the typing, then writes ?q= to the URL (once, not per letter)', async () => {
+      const router = TestBed.inject(Router);
+      const navigate = vi.spyOn(router, 'navigate');
+
+      // Three keystrokes in a row, with no time in between (a fast typist).
+      for (const text of ['h', 'he', 'hello']) {
+        box().value = text;
+        box().dispatchEvent(new Event('input'));
+      }
+      fixture.detectChanges();
+      expect(navigate).not.toHaveBeenCalled(); // still inside the pause
+
+      await vi.waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+      expect(navigate.mock.calls[0][1]).toMatchObject({ queryParams: { q: 'hello' }, replaceUrl: true });
+      await vi.waitFor(() => expect(router.url).toContain('q=hello'));
+    });
+
+    it('searches what the URL says and shows the results instead of the tree', async () => {
+      await urlSays('hello');
+      (await expectSearch('hello')).flush({ items: [hit('n1', 'Hello world')], total: 1, page: 1, pageSize: 20 });
+      await settle();
+
+      expect(el().querySelector('app-search-results')).not.toBeNull();
+      expect(el().querySelector('app-explorer-tree')).toBeNull(); // the tree is hidden while searching
+      expect(el().querySelector('.item__title')!.textContent).toContain('Hello world');
+    });
+
+    it('one letter is not searched: a hint is shown and the tree stays', async () => {
+      await type('h');
+
+      expect(el().querySelector('.search__hint')!.textContent).toContain('at least 2');
+      http.expectNone((r) => r.url === SEARCH);
+      expect(el().querySelector('app-search-results')).toBeNull();
+    });
+
+    it('the x button and Escape empty the box and bring the tree back at once', async () => {
+      await urlSays('hello');
+      (await expectSearch('hello')).flush({ items: [hit('n1', 'Hello')], total: 1, page: 1, pageSize: 20 });
+      await settle();
+      expect(box().value).toBe('hello');
+
+      el().querySelector<HTMLButtonElement>('button[aria-label="Clear search"]')!.click();
+      await settle();
+      expect(box().value).toBe('');
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).not.toContain('q='));
+      await urlSays(null);
+      expect(el().querySelector('app-search-results')).toBeNull();
+      expect(el().querySelector('app-explorer-tree')).not.toBeNull();
+
+      await type('again');
+      box().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await settle();
+      expect(box().value).toBe('');
+    });
+
+    it('the box follows the URL when it changes from outside (Back button, a link)', async () => {
+      await urlSays('from the url');
+      (await expectSearch('from the url')).flush({ items: [], total: 0, page: 1, pageSize: 20 });
+      await settle();
+
+      expect(box().value).toBe('from the url');
+      expect(el().textContent).toContain('No note matches "from the url"');
+    });
+
+    it('does not overwrite what the user typed when its own earlier text comes back from the URL', async () => {
+      await type('hel');
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toContain('q=hel'));
+      await type('hello'); // typed while the first navigation is still being handed down
+
+      await urlSays('hel'); // the page now reports the OLD text
+      (await expectSearch('hel')).flush({ items: [], total: 0, page: 1, pageSize: 20 });
+      await settle();
+
+      expect(box().value).toBe('hello');
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toContain('q=hello'));
+    });
+
+    it('searches inside a tag when a tag filter is on', async () => {
+      fixture.componentRef.setInput('tagId', 't1');
+      await urlSays('hello');
+
+      const request = await vi.waitFor(() => http.expectOne((r) => r.url === SEARCH && r.params.get('tagId') === 't1'));
+      request.flush({ items: [], total: 0, page: 1, pageSize: 20 });
+      await settle();
+    });
+
+    it('"Show more" loads the next page and adds it to the list', async () => {
+      await urlSays('hello');
+      (await expectSearch('hello')).flush({ items: [hit('n1', 'First')], total: 2, page: 1, pageSize: 1 });
+      await settle();
+
+      el().querySelector<HTMLButtonElement>('.more')!.click();
+      const second = await vi.waitFor(() => http.expectOne((r) => r.url === SEARCH && r.params.get('page') === '2'));
+      second.flush({ items: [hit('n2', 'Second')], total: 2, page: 2, pageSize: 1 });
+      await settle();
+
+      expect(Array.from(el().querySelectorAll('.item__title')).map((t) => t.textContent!.trim())).toEqual(['First', 'Second']);
+      expect(el().querySelector('.more')).toBeNull();
+    });
   });
 });

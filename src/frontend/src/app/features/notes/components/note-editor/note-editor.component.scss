@@ -39,6 +39,12 @@
     &::placeholder {
       color: var(--ink-text-muted);
     }
+
+    // Selected text (after "Rename") in the theme color instead of the browser blue.
+    &::selection {
+      background: var(--ink-bg-selected);
+      color: var(--ink-text);
+    }
   }
 }
 

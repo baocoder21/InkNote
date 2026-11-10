@@ -39,6 +39,25 @@
   color: var(--ink-accent);
 }
 
+// Outlined danger button (e.g. "Empty trash"): our danger color instead of ng-zorro's red, which
+// is too dim on the dark background. A plain nz-button has no ant-btn-default class, hence the :not() list.
+.ant-btn.ant-btn-dangerous:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link),
+.ant-btn.ant-btn-dangerous:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover {
+  background-color: transparent;
+  border-color: var(--ink-danger);
+  color: var(--ink-danger);
+}
+
+.ant-btn.ant-btn-dangerous:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover {
+  background-color: var(--ink-bg-hover);
+}
+
+.ant-btn.ant-btn-dangerous:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):disabled {
+  border-color: var(--ink-border-strong);
+  color: var(--ink-text-muted);
+  opacity: 0.6;
+}
+
 .ant-btn-primary:disabled,
 .ant-btn-default:disabled {
   background-color: var(--ink-bg-hover);

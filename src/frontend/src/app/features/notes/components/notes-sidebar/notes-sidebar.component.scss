@@ -212,3 +212,76 @@
     color: var(--ink-text);
   }
 }
+
+// "Trash" at the very bottom of the sidebar, with the number of notes in it.
+.trash-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0.5rem 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 5px;
+  color: var(--ink-text);
+  text-decoration: none;
+
+  &:hover {
+    background: var(--ink-bg-hover);
+  }
+
+  &--active {
+    background: var(--ink-bg-selected);
+    color: var(--ink-text-selected);
+  }
+
+  &__name {
+    flex: 1;
+    font-weight: 600;
+  }
+
+  &__count {
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: var(--ink-bg-hover);
+    border: 1px solid var(--ink-border-strong);
+    color: var(--ink-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.1rem;
+  }
+}
+
+// Who is signed in, with the sign-out button.
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0.5rem 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-top: 1px solid var(--ink-border);
+  color: var(--ink-text-muted);
+
+  &__email {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.82rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__logout {
+    display: inline-flex;
+    padding: 0.25rem 0.35rem;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ink-text-muted);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--ink-bg-hover);
+      color: var(--ink-text);
+      outline: none;
+    }
+  }
+}

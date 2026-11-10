@@ -16,6 +16,22 @@ public static class NotesEndpoints
             .WithName("ListNotes")
             .Produces<IReadOnlyList<NoteSummaryDto>>();
 
+        // Full-text search. "search" is a fixed word and ids must be Guids, so it is never taken for a note id.
+        group.MapGet("/search", async (
+                [AsParameters] SearchQuery query,
+                IValidator<SearchQuery> validator,
+                NoteSearchService search,
+                CancellationToken ct) =>
+            {
+                var validation = await validator.ValidateAsync(query, ct);
+                return validation.IsValid
+                    ? Results.Ok(await search.SearchAsync(query, ct))
+                    : Results.ValidationProblem(validation.ToDictionary());
+            })
+            .WithName("SearchNotes")
+            .Produces<SearchResponse>()
+            .ProducesValidationProblem();
+
         group.MapGet("/{id:guid}", async (Guid id, NoteService notes, CancellationToken ct) =>
                 await notes.GetAsync(id, ct) is { } note ? Results.Ok(note) : NotFound())
             .WithName("GetNote")
@@ -92,6 +108,37 @@ public static class NotesEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // ---- Trash: a collection of its own. "trash" is a fixed word, and ids must be Guids
+        // ({id:guid}), so "/api/notes/trash" can never be mistaken for a note id. ----
+        group.MapGet("/trash", async (NoteService notes, CancellationToken ct) =>
+                Results.Ok(await notes.ListTrashAsync(ct)))
+            .WithName("ListTrash")
+            .Produces<IReadOnlyList<NoteSummaryDto>>();
+
+        group.MapGet("/trash/{id:guid}", async (Guid id, NoteService notes, CancellationToken ct) =>
+                await notes.GetTrashedAsync(id, ct) is { } note ? Results.Ok(note) : NotFoundInTrash())
+            .WithName("GetTrashedNote")
+            .Produces<NoteDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/trash/{id:guid}/restore", async (Guid id, NoteService notes, CancellationToken ct) =>
+                await notes.RestoreAsync(id, ct) is { } note ? Results.Ok(note) : NotFoundInTrash())
+            .WithName("RestoreNote")
+            .Produces<NoteDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // Permanent: the row is removed from the database. Only for notes that are in the trash.
+        group.MapDelete("/trash/{id:guid}", async (Guid id, NoteService notes, CancellationToken ct) =>
+                await notes.PurgeAsync(id, ct) ? Results.NoContent() : NotFoundInTrash())
+            .WithName("PurgeNote")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapDelete("/trash", async (NoteService notes, CancellationToken ct) =>
+                Results.Ok(new EmptyTrashResult(await notes.EmptyTrashAsync(ct))))
+            .WithName("EmptyTrash")
+            .Produces<EmptyTrashResult>();
+
         return app;
     }
 
@@ -109,6 +156,9 @@ public static class NotesEndpoints
 
     private static IResult InvalidReference(string field, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });
+
+    private static IResult NotFoundInTrash() =>
+        Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Note not found in the trash");
 
     // Errors are returned as ProblemDetails (RFC 9457), a standard JSON error shape.
     private static IResult NotFound() =>

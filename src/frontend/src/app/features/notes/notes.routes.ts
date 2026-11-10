@@ -4,6 +4,7 @@ import { NzModalService } from 'ng-zorro-antd/modal';
 import { NoteEditorComponent } from './components/note-editor/note-editor.component';
 import { NoteEmptyComponent } from './components/note-empty/note-empty.component';
 import { NotesPageComponent } from './components/notes-page/notes-page.component';
+import { TrashPageComponent } from './components/trash-page/trash-page.component';
 
 export const NOTES_ROUTES: Routes = [
   {
@@ -15,6 +16,7 @@ export const NOTES_ROUTES: Routes = [
     component: NotesPageComponent, // sidebar + a <router-outlet> for the right-hand pane
     children: [
       { path: '', component: NoteEmptyComponent }, // /notes
+      { path: 'trash', component: TrashPageComponent }, // /notes/trash (before ':id', which would match it)
       { path: ':id', component: NoteEditorComponent }, // /notes/<id> -> input `id`
     ],
   },

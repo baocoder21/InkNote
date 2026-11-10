@@ -1,3 +1,5 @@
+@use '../chips'; // the status and tag chips, shared with the search results
+
 :host {
   display: block;
 }
@@ -34,19 +36,33 @@
     color: var(--ink-text-selected);
   }
 
-  &--folder {
-    font-weight: 500;
+  // Titles and folder names are bold, so they stand out from the small status/tag chips.
+  &__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
   }
 
+  // A note row is the title line plus, when the note has a status or tags, a line of chips.
   &__link {
     display: flex;
     flex: 1;
-    align-items: center;
-    gap: 0.35rem;
+    flex-direction: column;
+    gap: 0.15rem;
     min-width: 0;
     padding: 0.3rem 0;
     color: inherit;
     text-decoration: none;
+  }
+
+  &__line {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
   }
 
   &__chevron {
@@ -65,33 +81,47 @@
     color: var(--ink-accent);
   }
 
-  &__name {
-    flex: 1;
+  // The chips are indented to start under the title (chevron + icon + two gaps).
+  &__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
     min-width: 0;
+    padding-left: 2.35rem;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
-  // The "..." button shows on hover or keyboard focus (rows also have a right-click menu).
-  &__more {
+  // Quick actions: hidden until the row is hovered, keyboard-focused, or is the open note /
+  // the current folder (so after a click the options are right there).
+  &__actions {
     display: none;
     flex: none;
-    padding: 0.1rem 0.3rem;
+    align-items: center;
+    gap: 0.1rem;
+  }
+
+  &:hover &__actions,
+  &:focus-within &__actions,
+  &--active &__actions,
+  &--current &__actions {
+    display: inline-flex;
+  }
+
+  &__btn {
+    display: inline-flex;
+    padding: 0.2rem 0.3rem;
     border: 0;
     border-radius: 4px;
     background: transparent;
     color: var(--ink-text-muted);
     cursor: pointer;
 
-    &:hover {
+    &:hover,
+    &:focus-visible {
       background: var(--ink-bg-hover);
       color: var(--ink-text);
+      outline: none;
     }
   }
-
-  &:hover &__more,
-  &:focus-within &__more {
-    display: inline-flex;
-  }
 }
+

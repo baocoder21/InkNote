@@ -8,7 +8,7 @@ namespace InkNote.Api.Tests;
 
 public sealed class NotebooksApiTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
-    private readonly HttpClient _client = api.CreateClient();
+    private readonly HttpClient _client = api.CreateUserClient();
 
     private async Task<NotebookDto> CreateNotebookAsync(string name = "Notebook", Guid? parentId = null)
     {

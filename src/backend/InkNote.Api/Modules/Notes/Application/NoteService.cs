@@ -1,3 +1,4 @@
+using InkNote.Api.Common;
 using InkNote.Api.Modules.Notebooks.Contracts;
 using InkNote.Api.Modules.Notes.Contracts;
 using InkNote.Api.Modules.Notes.Domain;
@@ -25,6 +26,7 @@ public sealed record CreateNoteResult(NoteDto? Note, string? ErrorField = null, 
 /// </summary>
 public sealed class NoteService(
     AppDbContext db,
+    ICurrentUser user,
     INotebookLookup notebooks,
     ITagLookup tags,
     TimeProvider clock)
@@ -71,7 +73,7 @@ public sealed class NoteService(
             return new CreateNoteResult(null, "notebookId", NotebookNotFound);
         }
 
-        var note = Note.Create(request.Title, request.Content, request.NotebookId, clock.GetUtcNow());
+        var note = Note.Create(user.RequiredUserId, request.Title, request.Content, request.NotebookId, clock.GetUtcNow());
         db.Notes.Add(note);
         await db.SaveChangesAsync(ct);
         return new CreateNoteResult(NoteDto.From(note));
@@ -152,6 +154,60 @@ public sealed class NoteService(
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    // ---- Trash: notes that were deleted (soft) and can still be restored ----
+    // The query filter hides deleted notes everywhere, so the trash uses db.TrashedNotes: the
+    // current user's notes that ARE deleted (the owner check is written once, in AppDbContext, next
+    // to the IgnoreQueryFilters that makes it necessary). None of these can touch a live note, nor
+    // another user's.
+
+    /// <summary>Deleted notes, most recently deleted first (UpdatedAt = the moment of deletion).</summary>
+    public async Task<IReadOnlyList<NoteSummaryDto>> ListTrashAsync(CancellationToken ct) =>
+        await db.TrashedNotes.AsNoTracking()
+            .OrderByDescending(n => n.UpdatedAt)
+            .Select(n => new NoteSummaryDto(
+                n.Id, n.Title, n.UpdatedAt, n.Version, n.NotebookId, n.IsPinned, n.Status,
+                n.Tags.Select(t => t.TagId).ToList()))
+            .ToListAsync(ct);
+
+    /// <summary>One deleted note with its content, so the user can look before restoring.</summary>
+    public async Task<NoteDto?> GetTrashedAsync(Guid id, CancellationToken ct)
+    {
+        var note = await db.TrashedNotes.AsNoTracking().Include(n => n.Tags)
+            .FirstOrDefaultAsync(n => n.Id == id, ct);
+        return note is null ? null : NoteDto.From(note);
+    }
+
+    /// <returns>The restored note, or null when it is not in the trash.</returns>
+    public async Task<NoteDto?> RestoreAsync(Guid id, CancellationToken ct)
+    {
+        var note = await db.TrashedNotes.Include(n => n.Tags)
+            .FirstOrDefaultAsync(n => n.Id == id, ct);
+        if (note is null)
+        {
+            return null;
+        }
+
+        // Its notebook may have been deleted while the note was in the trash: the foreign key
+        // (ON DELETE SET NULL) already moved the note to "no notebook", so nothing to fix here.
+        note.Restore(clock.GetUtcNow());
+        if (!await TrySaveAsync(ct))
+        {
+            return null; // changed by someone else in the meantime; the caller sees "not found"
+        }
+
+        return NoteDto.From(note);
+    }
+
+    /// <summary>Deletes one note from the database for good. Only notes already in the trash.</summary>
+    /// <returns>false when the note is not in the trash.</returns>
+    public async Task<bool> PurgeAsync(Guid id, CancellationToken ct) =>
+        // One DELETE statement; the database removes the note's note_tags rows (ON DELETE CASCADE).
+        await db.TrashedNotes.Where(n => n.Id == id).ExecuteDeleteAsync(ct) > 0;
+
+    /// <returns>How many notes were deleted for good.</returns>
+    public async Task<int> EmptyTrashAsync(CancellationToken ct) =>
+        await db.TrashedNotes.ExecuteDeleteAsync(ct);
 
     // Safety net for concurrent edits: Version is a concurrency token, so if another request
     // saved first, our UPDATE matched 0 rows and EF throws DbUpdateConcurrencyException.

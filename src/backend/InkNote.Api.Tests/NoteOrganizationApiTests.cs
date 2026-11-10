@@ -11,7 +11,7 @@ namespace InkNote.Api.Tests;
 /// <summary>Notebook, pin and tags on notes, and filtering the list by them.</summary>
 public sealed class NoteOrganizationApiTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
-    private readonly HttpClient _client = api.CreateClient();
+    private readonly HttpClient _client = api.CreateUserClient();
 
     private async Task<NoteDto> CreateNoteAsync(string title = "Title", Guid? notebookId = null)
     {
