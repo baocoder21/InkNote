@@ -17,6 +17,18 @@ docker compose --profile app up -d --build
 Open http://localhost:8080 and register. Stop with `docker compose --profile app down` (your data stays in the volumes).
 All ports are bound to `127.0.0.1`: only this computer can reach the app.
 
+### Daily use: install the app from the Docker address
+
+Install the app (the "install" icon in the address bar, or the browser menu > "Install InkNote") from **http://localhost:8080**,
+not from `ng serve` (:4200): the development server has no service worker, so an app installed from it is only a window to
+a server that stops when you close the terminal. The Docker containers restart by themselves when Docker Desktop starts
+(turn on "Start Docker Desktop when you sign in"), so the installed app is always served.
+
+- Offline: the installed app opens and notes can be read and written without the containers (they live in the browser);
+  they are sent to the server when the containers run again ("All changes synced" in the sidebar).
+- Another address is another app: `localhost:8080` and `localhost:4200` keep separate local copies. Sign in again when you
+  move to a new address, and wait for "All changes synced" in the old one first. The notes themselves are in the database.
+
 ## Run it, option 2: develop on the host
 
 ```bash
