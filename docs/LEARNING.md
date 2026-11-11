@@ -475,3 +475,43 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - Make the local database the single source for the UI, and move the network behind a queue: failure of the network stops being a UI problem.
 - When two writers can happen at once, decide the rule first (here: last write wins + keep the loser as a revision) and write the tests for it before the UI.
 - Races hide in "who numbers first vs who commits first": put the guarantee where all writers pass (database triggers) and add a safety margin (the settle window).
+
+## Phase 8 - Real-time with SignalR (WebSocket)
+
+**Concepts**
+- **WebSocket**: one TCP connection that stays open, so the SERVER can send to the browser without being asked (plain HTTP only answers questions).
+- **SignalR**: ASP.NET Core's library over WebSocket. It negotiates the transport (WebSocket first, then fallbacks such as long polling), has **groups** (send to a set of connections) and a small client for the browser (`@microsoft/signalr`).
+- **Hub**: the server class a client connects to (like a controller for a long-lived connection). Ours has no methods the client can call; it only pushes `changed`.
+- **Doorbell pattern**: the message says "something changed, go and look" and carries no data. The device then does the normal pull. Why: one path for data, nothing to keep consistent between two paths, and a lost message costs nothing (the next pull catches up).
+- **Why the delay**: the pull hands out only changes older than the 2 s settle window (Phase 7). A device told too early would pull, get nothing, and never be told again. So the server rings the bell after the window, and merges a burst of changes into one ring.
+- **`SaveChangesInterceptor`**: an EF Core hook that runs around every `SaveChanges`. It collects whose data is being saved before the save, and rings after the save succeeded, so every way of saving is covered without anybody remembering.
+- **Auth for a WebSocket**: the browser cannot put an `Authorization` header on it, so the token goes in `?access_token=`, and the server accepts that only for `/hubs`.
+
+**How it fits together**
+1. Device A saves a note, the push reaches the server, EF saves it, the interceptor tells `SyncNotifier` the user id.
+2. The notifier waits until things are quiet (settle window + 150 ms), then sends `changed` to the group `user:{id}`.
+3. Device B's `RealtimeSync` receives it and calls `SyncEngine.syncNow()`; the pull applies the change to IndexedDB; the live queries redraw the screen.
+4. If B's connection is down, nothing is lost: `RealtimeSync` reconnects (pauses 0.5 s up to 30 s, a fresh token each time) and runs one synchronization when it is back.
+
+**How to verify**
+1. Restart the API (no new migration in this phase) and reload the app (Ctrl+Shift+R). In DevTools, Network, filter "WS": a connection to `/hubs/sync` stays open (type `websocket`).
+2. Open the app in two windows (or a normal and a private window) with the same account. Type in a note in one: within about 3 seconds the other updates by itself (open note, list, deletions too). Before this phase it could take up to 30 s.
+3. Stop the API for ~10 s, then start it again: the WebSocket connection closes and comes back by itself (no reload); what you typed meanwhile is sent after that. The status line says "Offline"/"Sync problem" while the server is away.
+4. DevTools, Network, "Offline" for a few seconds on one window while you edit in the other, then back online: the first window catches up within a second or two.
+5. `dotnet test --configuration Release` (256 tests, 13 are the new hub tests), `ng test --watch=false` (379 tests).
+
+**Pitfalls (met while building)**
+- A delayed message must be sent when the change is old enough to be pulled, not when it is saved (see above): the settle window made "ring at once" subtly wrong.
+- Testing a hub: SignalR's client over the in-memory test server works with the LONG POLLING transport (`HttpMessageHandlerFactory` + `Transports = LongPolling`); `TestServer` has no real sockets. After `StartAsync` wait a moment: the server puts the connection in its group just after the handshake (the app covers that window by synchronizing right after connecting).
+- Your browser test tool may route only HTTP: a WebSocket then goes to the original address (here a different port). SignalR quietly falls back to long polling, so everything seemed fine while the WebSocket path was untested. Check which transport really runs (the harness had to bridge the WebSocket).
+- Ask for the token every time (a function), never keep one: a reconnect an hour later would otherwise present an expired token and fail forever with 401.
+- Do not make two reconnect mechanisms (SignalR's `withAutomaticReconnect` plus your own loop): they fight. Pick one.
+- The browser itself logs "WebSocket connection ... failed" while the server is down; that is not an app error.
+
+**Honest limits**: an open connection is not closed when its token expires (only new connections are checked); the notification reaches the device that made the change too (one extra, cheap pull); while the server is down the devices retry at most every 30 s; a notification can arrive up to ~2.2 s after the change (the settle window); there is no on-screen "live" indicator yet (the status line shows synchronization, not the connection).
+
+**Key takeaways**
+- Send a SIGNAL, not the data, when a second channel could disagree with the first.
+- Put cross-cutting reactions in a hook that every path goes through (interceptor, trigger) instead of calling them from each place.
+- Real-time is an optimization over polling, never a replacement: keep the slow safety net, and make every new connection do a catch-up.
+- Test the transport you claim to use, not a fallback that happens to work.

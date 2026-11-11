@@ -15,9 +15,9 @@
 | MVP | 4 | Notebook và Tag | [x] |
 | MVP | 5 | Xác thực người dùng (Auth) | [x] |
 | MVP | 6 | Tìm kiếm full-text | [x] |
-| v1 | 7 | Local-first: lưu offline và hàng đợi đồng bộ | [~] chờ bạn kiểm tra |
-| v1 | 8 | Đồng bộ real-time bằng SignalR | [ ] |
-| v1 | 9 | PWA (cài đặt như app desktop) | [ ] |
+| v1 | 7 | Local-first: lưu offline và hàng đợi đồng bộ | [x] |
+| v1 | 8 | Đồng bộ real-time bằng SignalR | [x] |
+| v1 | 9 | PWA (cài đặt như app desktop) | [~] đang làm |
 | v1 | 10 | File đính kèm | [ ] |
 | v1 | 11 | Lịch sử phiên bản, thùng rác, import/export | [ ] |
 | Hoàn thiện | 12 | Kiểm thử, Docker, CI/CD, nâng cấp .NET 10 | [ ] |

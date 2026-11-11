@@ -33,7 +33,10 @@ builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
             "Missing connection string 'ConnectionStrings:Default'. " +
             "See docs/LEARNING.md (Phase 1) to set it with user-secrets.");
 
-    options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
+    options.UseNpgsql(connectionString)
+        .UseSnakeCaseNamingConvention()
+        // Tells the owner's other devices whenever something of theirs is saved (real-time sync).
+        .AddInterceptors(serviceProvider.GetRequiredService<SyncNotificationInterceptor>());
 });
 
 builder.Services.AddAuthModule(); // accounts, JWT, "sign in required" by default

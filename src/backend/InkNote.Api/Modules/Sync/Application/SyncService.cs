@@ -22,6 +22,12 @@ public sealed class SyncOptions
     public TimeSpan SettleWindow { get; set; } = TimeSpan.FromSeconds(2);
 
     public int MaxOperationsPerPush { get; set; } = 50;
+
+    /// <summary>
+    /// Real-time: the devices are told this long AFTER the settle window has passed (a little slack so the change
+    /// is certainly committed and old enough when they come to pull).
+    /// </summary>
+    public TimeSpan NotifyMargin { get; set; } = TimeSpan.FromMilliseconds(150);
 }
 
 public static class SyncLimits

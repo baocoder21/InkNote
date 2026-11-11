@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import Dexie from 'dexie';
 import { LocalDbService } from './local/local-db';
 import { LocalSession } from './local-session.service';
+import { HUB_FACTORY, HubLike, RealtimeSync } from './realtime-sync.service';
 import { SYNC_DEBOUNCE_MS, SYNC_INTERVAL_MS, SyncEngine } from './sync-engine.service';
 
 let counter = 0;
@@ -14,6 +15,8 @@ describe('LocalSession', () => {
   let engine: SyncEngine;
   let http: HttpTestingController;
   let user: string;
+  let realtime: RealtimeSync;
+  let stops: number; // how many connections were closed
 
   beforeEach(() => {
     user = `session-user-${++counter}`;
@@ -23,8 +26,18 @@ describe('LocalSession', () => {
         provideHttpClientTesting(),
         { provide: SYNC_DEBOUNCE_MS, useValue: 60 },
         { provide: SYNC_INTERVAL_MS, useValue: 0 },
+        {
+          // No real connection in this test: a hub that connects at once and remembers it was stopped.
+          provide: HUB_FACTORY,
+          useValue: (): HubLike => {
+            const hub = { on: () => undefined, onclose: () => undefined, start: () => Promise.resolve(), stop: () => (stops++, Promise.resolve()) };
+            return hub;
+          },
+        },
       ],
     });
+    stops = 0;
+    realtime = TestBed.inject(RealtimeSync);
     session = TestBed.inject(LocalSession);
     local = TestBed.inject(LocalDbService);
     engine = TestBed.inject(SyncEngine);
@@ -32,11 +45,37 @@ describe('LocalSession', () => {
   });
 
   afterEach(async () => {
+    realtime.stop();
     engine.stop();
     await local.wipe();
   });
 
+  it('begin also starts listening for the server\'s "changed", end and wipe stop it', async () => {
+    await session.begin(user);
+    await vi.waitFor(() => expect(realtime.state()).toBe('live'));
+
+    session.end();
+    expect(realtime.state()).toBe('off');
+    expect(stops).toBe(1);
+
+    await session.begin(user);
+    await vi.waitFor(() => expect(realtime.state()).toBe('live'));
+    await session.wipe();
+    expect(realtime.state()).toBe('off');
+    expect(stops).toBe(2);
+  });
+
   const pullRequests = () => http.match((r) => r.url.endsWith('/api/sync/pull'));
+
+  /** Answers every pull the engine asks for (the start, and the catch-up after the real-time connection) until it is quiet. */
+  async function answerPulls(): Promise<void> {
+    for (let quietRounds = 0; quietRounds < 2; ) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const found = pullRequests();
+      found.forEach((r) => r.flush({ changes: [], cursor: 0, hasMore: false }));
+      quietRounds = found.length === 0 ? quietRounds + 1 : 0;
+    }
+  }
 
   it('begin opens the database of that user and starts synchronizing (the catch-up pull)', async () => {
     await session.begin(user);
@@ -51,11 +90,8 @@ describe('LocalSession', () => {
 
   it('begin again for the same user does nothing (the page can be opened twice)', async () => {
     await session.begin(user);
-    await vi.waitFor(() => {
-      const found = pullRequests();
-      expect(found).toHaveLength(1); // the first start's catch-up
-      found[0].flush({ changes: [], cursor: 0, hasMore: false });
-    });
+    await vi.waitFor(() => expect(realtime.state()).toBe('live'));
+    await answerPulls(); // the first start's catch-up and the one after the real-time connection
 
     await session.begin(user);
     await new Promise((resolve) => setTimeout(resolve, 20));

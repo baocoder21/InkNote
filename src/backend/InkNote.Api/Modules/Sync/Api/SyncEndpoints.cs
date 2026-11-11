@@ -8,6 +8,9 @@ public static class SyncEndpoints
 {
     public static IEndpointRouteBuilder MapSyncEndpoints(this IEndpointRouteBuilder app)
     {
+        // The doorbell (SignalR). It requires sign-in like everything else (fallback policy + [Authorize]).
+        app.MapHub<SyncHub>(SyncHub.Path);
+
         var group = app.MapGroup("/api/sync").WithTags("Sync");
 
         // "What happened since position N?" The answer carries the new position to ask from next time.

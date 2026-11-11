@@ -47,6 +47,8 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // Changes are normally handed out only after a 2 second "settle window" (see SyncOptions). Tests want to see
                 // them at once; a dedicated test class turns the window on to check that it works.
                 ["Sync:SettleWindow"] = "00:00:00",
+                // Real-time notifications are sent this long after the (here: zero) settle window.
+                ["Sync:NotifyMargin"] = "00:00:00.050",
             });
             config.AddInMemoryCollection(Settings); // a subclass can override the values above
         });

@@ -90,6 +90,23 @@ internal sealed class ConfigureJwtBearer(IOptions<JwtOptions> options) : IConfig
             ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
             NameClaimType = HttpCurrentUser.SubjectClaim,
         };
+
+        // A browser cannot put an "Authorization" header on a WebSocket, so SignalR sends the token as
+        // "?access_token=". It is read ONLY for the hubs, never for the REST API (a token in a URL can end up in
+        // logs; the access token lives 15 minutes, which limits what a leaked one is worth).
+        bearer.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = token;
+                }
+
+                return Task.CompletedTask;
+            },
+        };
     }
 
     public void Configure(JwtBearerOptions bearer) => Configure(JwtBearerDefaults.AuthenticationScheme, bearer);
