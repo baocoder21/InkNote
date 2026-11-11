@@ -13,9 +13,25 @@ public sealed class BadRequestExceptionHandler(IProblemDetailsService problemDet
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken ct)
     {
-        if (exception is not BadHttpRequestException)
+        if (exception is not BadHttpRequestException bad)
         {
             return false; // not ours: the default handler answers 500
+        }
+
+        // The web server refused a body above the limit set for the endpoint (an oversized upload): that is "too large", not "malformed".
+        if (bad.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return await problemDetails.TryWriteAsync(new ProblemDetailsContext
+            {
+                HttpContext = context,
+                Exception = exception,
+                ProblemDetails = new ProblemDetails
+                {
+                    Status = StatusCodes.Status413PayloadTooLarge,
+                    Title = "The request is too large.",
+                },
+            });
         }
 
         context.Response.StatusCode = StatusCodes.Status400BadRequest;

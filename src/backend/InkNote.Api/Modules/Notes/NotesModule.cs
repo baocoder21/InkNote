@@ -10,10 +10,13 @@ public static class NotesModule
     /// <summary>Registers everything the Notes module needs in the DI container.</summary>
     public static IServiceCollection AddNotesModule(this IServiceCollection services)
     {
+        services.AddOptions<NoteRevisionOptions>().BindConfiguration(NoteRevisionOptions.SectionName);
+        services.AddScoped<NoteRevisionRecorder>();
         services.AddScoped<NoteService>(); // one instance per HTTP request
         services.AddScoped<NoteSearchService>();
         services.AddScoped<ISyncHandler, NoteSyncHandler>(); // lets the Sync module read and change notes
         services.AddScoped<INotebookUsage, NotebookUsage>(); // the contract the Notebooks module uses
+        services.AddScoped<INoteLookup, NoteLookup>(); // the contract the Attachments module uses
         services.AddValidatorsFromAssemblyContaining<CreateNoteRequestValidator>();
         return services;
     }

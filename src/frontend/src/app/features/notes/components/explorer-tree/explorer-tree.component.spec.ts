@@ -118,21 +118,24 @@ describe('ExplorerTreeComponent', () => {
     expect(events).toEqual(['note:w', 'folder:w', 'rename:w', 'delete:w']);
   });
 
-  it('a note menu offers pin / unpin and delete', async () => {
+  it('a note menu offers rename, pin / unpin, export and delete', async () => {
     show(['w', 'p']);
     const events: string[] = [];
     fixture.componentInstance.togglePin.subscribe((n) => events.push(`pin:${n.id}`));
     fixture.componentInstance.deleteNote.subscribe((n) => events.push(`delete:${n.id}`));
+    fixture.componentInstance.exportNote.subscribe((n) => events.push(`export:${n.id}`));
 
     const unpinned = await rightClick('Plan');
-    expect(unpinned().map((i) => i.textContent!.trim())).toEqual(['Rename', 'Pin to top', 'Delete note']);
+    expect(unpinned().map((i) => i.textContent!.trim())).toEqual(['Rename', 'Pin to top', 'Export', 'Delete note']);
     unpinned().find((i) => i.textContent!.includes('Pin to top'))!.click();
 
     const pinned = await rightClick('Roadmap');
-    expect(pinned().map((i) => i.textContent!.trim())).toEqual(['Rename', 'Unpin', 'Delete note']);
-    pinned().find((i) => i.textContent!.includes('Delete note'))!.click();
+    expect(pinned().map((i) => i.textContent!.trim())).toEqual(['Rename', 'Unpin', 'Export', 'Delete note']);
+    pinned().find((i) => i.textContent!.includes('Export'))!.click();
+    const again = await rightClick('Roadmap');
+    again().find((i) => i.textContent!.includes('Delete note'))!.click();
 
-    expect(events).toEqual(['pin:n1', 'delete:n2']);
+    expect(events).toEqual(['pin:n1', 'export:n2', 'delete:n2']);
   });
 
   it('a note menu also offers Rename, and reports it', async () => {

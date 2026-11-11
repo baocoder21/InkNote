@@ -1,9 +1,9 @@
 namespace InkNote.Api.Modules.Notes.Domain;
 
 /// <summary>
-/// An older text of a note, kept so that nothing is lost. For now they are created when two devices
-/// changed the same note and one change had to overwrite the other (reason "conflict"): the text that was
-/// overwritten is saved here. Phase 11 adds a screen to browse and restore them.
+/// An older text of a note, kept so that nothing is lost. Created when two devices changed the same note (reason
+/// "conflict"), before an edit ("edit", throttled: see NoteRevisionRecorder) and before a restore ("restore").
+/// The history screen lists them and puts one back.
 /// </summary>
 public sealed class NoteRevision
 {
@@ -20,7 +20,14 @@ public sealed class NoteRevision
     public string Reason { get; private set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>Two devices changed the note: the text that lost is kept here.</summary>
     public const string ConflictReason = "conflict";
+
+    /// <summary>The text as it was before an edit (at most one per editing session).</summary>
+    public const string EditReason = "edit";
+
+    /// <summary>The text as it was before an older version was put back, so that a restore can be undone too.</summary>
+    public const string RestoreReason = "restore";
 
     public static NoteRevision Create(Guid userId, Note note, string reason, DateTimeOffset now) => new()
     {

@@ -68,8 +68,22 @@ public abstract class SyncTestBase(ApiFixture api)
     protected async Task<HttpStatusCode> NoteStatusAsync(Guid id, HttpClient? client = null) =>
         (await (client ?? Client).GetAsync($"/api/notes/{id}")).StatusCode;
 
-    protected async Task<List<NoteRevisionDto>> RevisionsAsync(Guid noteId, HttpClient? client = null) =>
-        (await (client ?? Client).GetFromJsonAsync<List<NoteRevisionDto>>($"/api/notes/{noteId}/revisions"))!;
+    /// <summary>
+    /// The revisions of ONE kind, with their whole text. By default the ones a CONFLICT made: that is what the sync tests
+    /// are about (the automatic "edit" snapshots of a note have their own tests in NoteRevisionTests).
+    /// </summary>
+    protected async Task<List<NoteRevisionDto>> RevisionsAsync(Guid noteId, HttpClient? client = null, string reason = NoteRevision.ConflictReason)
+    {
+        var http = client ?? Client;
+        var summaries = (await http.GetFromJsonAsync<List<NoteRevisionSummaryDto>>($"/api/notes/{noteId}/revisions"))!;
+        var full = new List<NoteRevisionDto>();
+        foreach (var summary in summaries.Where(s => s.Reason == reason))
+        {
+            full.Add((await http.GetFromJsonAsync<NoteRevisionDto>($"/api/notes/{noteId}/revisions/{summary.Id}"))!);
+        }
+
+        return full;
+    }
 
     protected async Task<NoteDto> RestCreateNoteAsync(string title, string content = "x")
     {

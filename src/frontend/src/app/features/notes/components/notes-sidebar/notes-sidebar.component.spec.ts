@@ -269,6 +269,32 @@ describe('NotesSidebarComponent', () => {
     expect(rowNames()).toEqual(['[F] Work', '[F] Projects', '[N] Plan', '[N] Loose']);
   });
 
+  it('has a link to the Import & export page, under Trash', () => {
+    const link = Array.from(el().querySelectorAll<HTMLAnchorElement>('a.trash-link')).find((a) => a.textContent!.includes('Import & export'))!;
+
+    expect(link.getAttribute('href')).toBe('/notes/transfer');
+  });
+
+  it('"Export" in the menu of a note saves that note as a Markdown file', async () => {
+    const saved: { href: string; download: string }[] = [];
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push({ href: this.href, download: this.download });
+    });
+    row('Work').click();
+    await settle();
+
+    row('Plan').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    await settle();
+    await sleep(20);
+    Array.from(document.querySelectorAll<HTMLElement>('.cdk-overlay-container li'))
+      .find((i) => i.textContent!.includes('Export'))!
+      .click();
+
+    await vi.waitFor(() => expect(saved).toEqual([{ href: 'blob:fake', download: 'Plan.md' }]));
+  });
+
   it('each note row shows its status and its tag names (looked up from the tag list)', () => {
     const chips = (selector: string) =>
       Array.from(row('Loose').querySelectorAll(selector)).map((e) => e.textContent!.trim());

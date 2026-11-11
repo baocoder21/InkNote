@@ -189,6 +189,8 @@ public sealed class UserIsolationApiTests(ApiFixture api) : IClassFixture<ApiFix
             { "GET", "/api/sync/pull" },
             { "POST", "/api/sync/push" },
             { "GET", $"/api/notes/{id}/revisions" },
+            { "GET", $"/api/notes/{id}/revisions/{id}" },
+            { "POST", $"/api/notes/{id}/revisions/{id}/restore" },
             { "POST", "/api/notes" },
             { "GET", $"/api/notes/{id}" },
             { "PUT", $"/api/notes/{id}" },
@@ -208,6 +210,10 @@ public sealed class UserIsolationApiTests(ApiFixture api) : IClassFixture<ApiFix
             { "PUT", $"/api/tags/{id}" },
             { "DELETE", $"/api/tags/{id}" },
             { "GET", "/api/auth/me" },
+            { "POST", "/api/attachments" },
+            { "GET", $"/api/attachments/{id}" },
+            { "GET", $"/api/attachments/{id}/url" },
+            { "DELETE", $"/api/attachments/{id}" },
         };
     }
 

@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { LocalDbService } from './local/local-db';
+import { AttachmentResolver } from '../attachments/services/attachment-resolver.service';
 import { RealtimeSync } from './realtime-sync.service';
 import { SyncEngine } from './sync-engine.service';
 
@@ -17,6 +18,7 @@ export class LocalSession {
   private readonly local = inject(LocalDbService);
   private readonly engine = inject(SyncEngine);
   private readonly realtime = inject(RealtimeSync);
+  private readonly attachments = inject(AttachmentResolver);
 
   /** Opens this user's database and starts the synchronization. Safe to call again. */
   async begin(userId: string): Promise<void> {
@@ -32,6 +34,7 @@ export class LocalSession {
   end(): void {
     this.realtime.stop();
     this.engine.stop();
+    this.attachments.clear(); // the addresses made for this user's files
     this.local.close();
   }
 
@@ -39,6 +42,7 @@ export class LocalSession {
   async wipe(): Promise<void> {
     this.realtime.stop();
     this.engine.stop();
+    this.attachments.clear();
     await this.local.wipe();
   }
 }

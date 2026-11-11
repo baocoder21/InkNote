@@ -32,12 +32,36 @@ public static class NotesEndpoints
             .Produces<SearchResponse>()
             .ProducesValidationProblem();
 
-        // The older texts the server kept when two devices changed the same note.
+        // The history of a note: the older texts the server kept (before edits, after conflicts, before restores).
         group.MapGet("/{id:guid}/revisions", async (Guid id, NoteService notes, CancellationToken ct) =>
                 await notes.GetRevisionsAsync(id, ct) is { } revisions ? Results.Ok(revisions) : NotFound())
             .WithName("ListNoteRevisions")
-            .Produces<IReadOnlyList<NoteRevisionDto>>()
+            .Produces<IReadOnlyList<NoteRevisionSummaryDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{id:guid}/revisions/{revisionId:guid}", async (Guid id, Guid revisionId, NoteService notes, CancellationToken ct) =>
+                await notes.GetRevisionAsync(id, revisionId, ct) is { } revision
+                    ? Results.Ok(revision)
+                    : Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Revision not found"))
+            .WithName("GetNoteRevision")
+            .Produces<NoteRevisionDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // Puts an older text back. Answers with the note as it is now.
+        group.MapPost("/{id:guid}/revisions/{revisionId:guid}/restore", async (Guid id, Guid revisionId, NoteService notes, CancellationToken ct) =>
+            {
+                var result = await notes.RestoreRevisionAsync(id, revisionId, ct);
+                return result.Status switch
+                {
+                    UpdateNoteStatus.Updated => Results.Ok(result.Note),
+                    UpdateNoteStatus.Conflict => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "The note was changed meanwhile"),
+                    _ => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Note or revision not found"),
+                };
+            })
+            .WithName("RestoreNoteRevision")
+            .Produces<NoteDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/{id:guid}", async (Guid id, NoteService notes, CancellationToken ct) =>
                 await notes.GetAsync(id, ct) is { } note ? Results.Ok(note) : NotFound())

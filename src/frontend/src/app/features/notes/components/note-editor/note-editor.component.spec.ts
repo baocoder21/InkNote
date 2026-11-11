@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { provideUi } from '../../../../core/ui.providers';
@@ -44,6 +46,8 @@ async function setup(autosaveDelay: number) {
       // "notes" exists so that leaving the editor (navigate to /notes) has somewhere to go.
       provideRouter([{ path: 'notes', children: [] }]),
       provideUi(),
+      provideHttpClient(),
+      provideHttpClientTesting(), // the preview can ask for the files of a note
       { provide: AUTOSAVE_DELAY_MS, useValue: autosaveDelay },
     ],
   }).compileComponents();
@@ -111,6 +115,14 @@ describe('NoteEditorComponent', () => {
     // Notes save by themselves and with Ctrl+S; deleting is done from the sidebar menu.
     expect(t.el().querySelector('button.save-btn')).toBeNull();
     expect(t.el().querySelector('[aria-label="Delete note"]')).toBeNull();
+  });
+
+  it('has a History link in the header that goes to the older versions of THIS note', () => {
+    const link = t.el().querySelector<HTMLAnchorElement>('a.head__history')!;
+
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe(`/notes/${NOTE.id}/history`);
+    expect(link.getAttribute('aria-label')).toBe('Note history');
   });
 
   it('Ctrl+S writes the edited title to this device and queues it, on top of the version it was based on', async () => {

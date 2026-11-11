@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { renderMarkdown } from '../../markdown/markdown-renderer';
 import { MarkdownPreviewComponent } from './markdown-preview.component';
@@ -22,7 +24,10 @@ describe('MarkdownPreviewComponent', () => {
   }, 60_000);
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [MarkdownPreviewComponent] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [MarkdownPreviewComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()], // the preview can ask for the files of a note
+    }).compileComponents();
     fixture = TestBed.createComponent(MarkdownPreviewComponent);
   });
 

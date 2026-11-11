@@ -1,3 +1,4 @@
+using InkNote.Api.Modules.Attachments.Domain;
 using InkNote.Api.Common;
 using InkNote.Api.Modules.Auth.Domain;
 using InkNote.Api.Modules.Notebooks.Domain;
@@ -29,6 +30,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<NoteRevision> NoteRevisions => Set<NoteRevision>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<SyncTombstone> SyncTombstones => Set<SyncTombstone>();
     public DbSet<SyncOperationRecord> SyncOperations => Set<SyncOperationRecord>();
     // No DbSet for NoteTag: it is only reached through Note.Tags.
@@ -75,6 +77,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
         modelBuilder.Entity<Notebook>().HasQueryFilter(n => CurrentUserId != null && n.UserId == CurrentUserId);
         modelBuilder.Entity<Tag>().HasQueryFilter(t => CurrentUserId != null && t.UserId == CurrentUserId);
         modelBuilder.Entity<NoteRevision>().HasQueryFilter(r => CurrentUserId != null && r.UserId == CurrentUserId);
+        modelBuilder.Entity<Attachment>().HasQueryFilter(a => CurrentUserId != null && a.UserId == CurrentUserId);
         modelBuilder.Entity<SyncTombstone>().HasQueryFilter(t => CurrentUserId != null && t.UserId == CurrentUserId);
         modelBuilder.Entity<SyncOperationRecord>().HasQueryFilter(r => CurrentUserId != null && r.UserId == CurrentUserId);
     }

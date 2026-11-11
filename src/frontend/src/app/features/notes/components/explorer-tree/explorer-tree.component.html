@@ -153,6 +153,9 @@
         <nz-icon nzType="pushpin" nzTheme="outline" />
         {{ note.isPinned ? 'Unpin' : 'Pin to top' }}
       </li>
+      <li nz-menu-item (click)="run(exportNote, note)">
+        <nz-icon nzType="download" nzTheme="outline" /> Export
+      </li>
       <li nz-menu-divider></li>
       <li nz-menu-item nzDanger (click)="run(deleteNote, note)">
         <nz-icon nzType="delete" nzTheme="outline" /> Delete note

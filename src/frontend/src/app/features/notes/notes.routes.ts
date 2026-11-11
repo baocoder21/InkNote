@@ -2,9 +2,11 @@ import { Routes } from '@angular/router';
 import { NzContextMenuService } from 'ng-zorro-antd/dropdown';
 import { NzModalService } from 'ng-zorro-antd/modal';
 import { NoteEditorComponent } from './components/note-editor/note-editor.component';
+import { NoteHistoryPageComponent } from './components/note-history-page/note-history-page.component';
 import { NoteEmptyComponent } from './components/note-empty/note-empty.component';
 import { NotesPageComponent } from './components/notes-page/notes-page.component';
 import { TrashPageComponent } from './components/trash-page/trash-page.component';
+import { TransferPageComponent } from '../transfer/transfer-page.component';
 
 export const NOTES_ROUTES: Routes = [
   {
@@ -17,6 +19,8 @@ export const NOTES_ROUTES: Routes = [
     children: [
       { path: '', component: NoteEmptyComponent }, // /notes
       { path: 'trash', component: TrashPageComponent }, // /notes/trash (before ':id', which would match it)
+      { path: 'transfer', component: TransferPageComponent }, // /notes/transfer: import and export
+      { path: ':id/history', component: NoteHistoryPageComponent }, // /notes/<id>/history
       { path: ':id', component: NoteEditorComponent }, // /notes/<id> -> input `id`
     ],
   },

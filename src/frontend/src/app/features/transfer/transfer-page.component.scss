@@ -1,0 +1,121 @@
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 52rem;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.head {
+  &__title {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ink-text);
+  }
+
+  &__hint {
+    margin: 0.25rem 0 0;
+    color: var(--ink-text-muted);
+    font-size: 0.85rem;
+  }
+}
+
+.panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--ink-border);
+  border-radius: 8px;
+  background: var(--ink-bg-sidebar);
+
+  &__title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink-text);
+  }
+
+  &__text {
+    margin: 0;
+    color: var(--ink-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+}
+
+// The real <input type=file> is hidden; the label is the button (a label forwards the click to its input).
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 1rem;
+  border: 1px solid var(--ink-accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-accent);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-within {
+    background: var(--ink-bg-hover);
+  }
+
+  &--busy {
+    cursor: progress;
+    opacity: 0.6;
+  }
+
+  &__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+  }
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  width: 100%;
+  border: 1px solid var(--ink-border-strong);
+  border-radius: 6px;
+  background: var(--ink-bg);
+  color: var(--ink-text);
+  font-size: 0.85rem;
+
+  &--warning {
+    border-color: var(--ink-danger);
+  }
+}
+
+.skipped {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+  max-height: 14rem;
+  overflow-y: auto;
+
+  &__name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+}

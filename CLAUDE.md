@@ -27,12 +27,18 @@ This is the user's first project. They want to learn and fully understand each t
 - Backend: .NET 9, ASP.NET Core, EF Core + Npgsql, SignalR, Identity + JWT. Modular monolith.
 - DB: PostgreSQL. Cache: IMemoryCache (Redis later). Desktop: PWA.
 
-## Directory layout (planned, update when scaffolded)
+## Directory layout
 
-- `src/backend/` – .NET solution, one folder per module in `Modules/<Name>/`
-- `src/frontend/` – Angular workspace, one folder per feature in `src/app/features/<name>/`
-- `docs/` – PROJECT_MAP.md, DECISIONS.md
+- `src/backend/` – .NET solution, one folder per module in `InkNote.Api/Modules/<Name>/`; `InkNote.Api.Tests/`; `Dockerfile`
+- `src/frontend/` – Angular workspace, one folder per feature in `src/app/features/<name>/`; `e2e/` (Playwright); `Dockerfile` + `nginx.conf`
+- `docs/` – PROJECT_MAP.md, DECISIONS.md, PHASES.md, LEARNING.md
+- `docker-compose.yml` (+ `.env.example`) – dev services (`db`, `storage`) and the whole system (profile `app`)
+- `.github/workflows/ci.yml` – CI; `README.md` – how to run and test
 - `.claude/rules/` – scoped rules; `.claude/skills/` – repeatable workflows
+
+## Scope (owner's decision, 11/2026)
+
+InkNote is for the owner's PERSONAL use on their own machine and is never put on the internet: no .NET 10 upgrade (stay on .NET 9), no public-deployment work (HTTPS, CSP, production storage, Redis, OpenTelemetry). Details in `docs/DECISIONS.md`.
 
 ## General conventions
 

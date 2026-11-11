@@ -29,6 +29,8 @@ import { SearchStore } from '../../store/search.store';
 import { AuthStore } from '../../../auth/store/auth.store';
 import { SyncStatusComponent } from '../../../sync/components/sync-status/sync-status.component';
 import { LocalSession } from '../../../sync/local-session.service';
+import { downloadBlob } from '../../../transfer/download';
+import { ExportService } from '../../../transfer/export.service';
 import { SyncEngine } from '../../../sync/sync-engine.service';
 import { TrashStore } from '../../store/trash.store';
 import { ExplorerTreeComponent } from '../explorer-tree/explorer-tree.component';
@@ -85,6 +87,7 @@ export class NotesSidebarComponent {
   protected readonly auth = inject(AuthStore);
   protected readonly sync = inject(SyncEngine);
   private readonly session = inject(LocalSession);
+  private readonly exporter = inject(ExportService);
   protected readonly theme = inject(ThemeService);
   protected readonly themes = THEME_OPTIONS;
   private readonly router = inject(Router);
@@ -277,6 +280,23 @@ export class NotesSidebarComponent {
     });
     if (result !== 'ok') {
       this.message.error('Cannot pin the note');
+    }
+  }
+
+  /** Saves one note as a Markdown file (a zip when it has attached files). */
+  protected async exportNote(note: NoteSummary): Promise<void> {
+    try {
+      const result = await this.exporter.exportNote(note.id);
+      if (!result) {
+        this.message.warning('This note no longer exists.');
+        return;
+      }
+      downloadBlob(result.blob, result.fileName);
+      if (result.missingAttachments > 0) {
+        this.message.warning('Some files of this note are not on this device and could not be included (are you offline?).');
+      }
+    } catch {
+      this.message.error('The export failed.');
     }
   }
 

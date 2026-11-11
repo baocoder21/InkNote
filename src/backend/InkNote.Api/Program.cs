@@ -1,4 +1,6 @@
 using System.Threading.RateLimiting;
+using InkNote.Api.Modules.Attachments;
+using InkNote.Api.Modules.Attachments.Api;
 using InkNote.Api.Modules.Auth;
 using InkNote.Api.Modules.Auth.Api;
 using InkNote.Api.Modules.Auth.Application;
@@ -14,8 +16,19 @@ using InkNote.Api.Persistence;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logging with Serilog: structured events ("Imported {Count} notes" keeps Count as a field, not just text). Levels and sinks
+// come from the "Serilog" section of appsettings.json; any ILogEventSink registered in DI is added too (tests use that).
+// RULE: never log the text of a note, a token or a password. Log ids and counts.
+builder.Host.UseSerilog((context, services, logger) => logger
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext(),
+    preserveStaticLogger: true); // do not replace the global Log.Logger: the logger belongs to this host (see the request log below)
 
 // Register services in the dependency-injection (DI) container.
 builder.Services.AddOpenApi();
@@ -44,6 +57,7 @@ builder.Services.AddNotesModule();
 builder.Services.AddNotebooksModule();
 builder.Services.AddTagsModule();
 builder.Services.AddSyncModule(); // push/pull of changes for the devices
+builder.Services.AddAttachmentsModule(); // files attached to notes (object storage)
 
 // CORS: the browser blocks the Angular dev server (another origin) from calling
 // this API unless the API explicitly allows that origin.
@@ -77,7 +91,30 @@ builder.Services.AddOptions<RateLimiterOptions>().Configure<IOptions<AuthRateLim
 
 var app = builder.Build();
 
+// A container starts with an EMPTY database. When asked to (Database:MigrateOnStartup = true, set in docker-compose.yml),
+// apply the pending migrations before serving. Off by default: in development you run `dotnet ef database update` yourself.
+// (EF Core takes a database lock while migrating, so two instances starting together do not collide.)
+if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
+    using var scope = app.Services.CreateScope();
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+}
+
 // Configure the HTTP request pipeline (order matters).
+// One log line per request: "HTTP GET /api/notes responded 200 in 4.2 ms". Only the PATH is logged, never the query string
+// (the SignalR connection carries the access token in it: /hubs/sync?access_token=...). First in the pipeline so that it
+// also sees the exceptions that the handler below turns into a 500.
+app.UseSerilogRequestLogging(options =>
+{
+    // THIS host's logger, not the static Log.Logger: with several hosts in one process (the tests) the static one belongs
+    // to whichever host started last.
+    options.Logger = app.Services.GetRequiredService<Serilog.ILogger>();
+    options.GetLevel = (http, _, error) =>
+        error is not null || http.Response.StatusCode >= 500 ? LogEventLevel.Error
+        : http.Request.Path.StartsWithSegments("/api/health") ? LogEventLevel.Verbose // the container's health check, every 5 s: noise
+        : http.Response.StatusCode >= 400 ? LogEventLevel.Warning
+        : LogEventLevel.Information;
+});
 app.UseExceptionHandler();   // unhandled exceptions -> 500 ProblemDetails
 app.UseStatusCodePages();    // bare 404/405... -> ProblemDetails body
 
@@ -110,6 +147,7 @@ app.MapNotesEndpoints();
 app.MapNotebooksEndpoints();
 app.MapTagsEndpoints();
 app.MapSyncEndpoints();
+app.MapAttachmentsEndpoints();
 
 app.Run();
 

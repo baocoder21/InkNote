@@ -9,6 +9,8 @@ import { live } from './local/live';
 import { hasPendingOperations } from './local/outbox';
 import { MAX_OPERATIONS_PER_PUSH, SyncChange, SyncOperation, SyncOperationResult } from './models/sync.model';
 import { SyncApi } from './services/sync-api.service';
+import { AttachmentRepository } from '../attachments/data/attachment-repository';
+import { AttachmentsApi } from '../attachments/services/attachments-api.service';
 
 /** Pause after the last local change before the queue is sent. Injectable so that tests can shorten it. */
 export const SYNC_DEBOUNCE_MS = new InjectionToken<number>('SYNC_DEBOUNCE_MS', { providedIn: 'root', factory: () => 1500 });
@@ -21,6 +23,25 @@ export type SyncState = 'idle' | 'syncing' | 'offline' | 'error';
 export interface SyncNotice {
   kind: 'conflict' | 'gone' | 'rejected';
   message: string;
+}
+
+/**
+ * Why the server turned an upload down for good, in words for the user; null when it is not a refusal (a server
+ * error or an expired session: worth trying again).
+ */
+function refusalOf(error: HttpErrorResponse): string | null {
+  switch (error.status) {
+    case 404:
+      return 'its note no longer exists.';
+    case 400:
+      return 'the file is empty.';
+    case 413:
+      return typeof error.error?.title === 'string' && /full/i.test(error.error.title) ? 'your storage is full.' : 'the file is too large.';
+    case 415:
+      return 'this kind of file is not allowed.';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -39,6 +60,8 @@ export interface SyncNotice {
 export class SyncEngine {
   private readonly local = inject(LocalDbService);
   private readonly api = inject(SyncApi);
+  private readonly attachments = inject(AttachmentRepository);
+  private readonly attachmentsApi = inject(AttachmentsApi);
   private readonly document = inject(DOCUMENT);
   private readonly debounceMs = inject(SYNC_DEBOUNCE_MS);
   private readonly intervalMs = inject(SYNC_INTERVAL_MS);
@@ -67,7 +90,8 @@ export class SyncEngine {
     this.stop();
     const view = this.document.defaultView;
 
-    this.pendingWatch = live(() => this.local.db.outbox.count()).subscribe((count) => {
+    // What waits to be sent: queued changes AND attached files not uploaded yet (the query follows both tables).
+    this.pendingWatch = live(() => this.waiting()).subscribe((count) => {
       const grew = count > this.pending();
       this.pending.set(count);
       if (grew) {
@@ -147,7 +171,7 @@ export class SyncEngine {
 
   /** How many changes have not reached the server (for the "sign out?" warning). */
   async pendingCount(): Promise<number> {
-    return this.local.isOpen ? this.local.db.outbox.count() : 0;
+    return this.local.isOpen ? this.waiting() : 0;
   }
 
   // ------------------------------------------------------------------
@@ -164,6 +188,7 @@ export class SyncEngine {
     this.state.set('syncing');
     try {
       await this.push();
+      await this.uploadAttachments(); // after the push: a file belongs to a note, which must be on the server first
       await this.pull();
       this.lastSyncedAt.set(new Date());
       this.initialSyncDone.set(true);
@@ -174,6 +199,56 @@ export class SyncEngine {
       // status 0 = the request never reached a server (no network, server down): that is "offline", not a bug.
       const offline = this.browserOffline || (error instanceof HttpErrorResponse && error.status === 0);
       this.state.set(offline ? 'offline' : 'error');
+    }
+  }
+
+  private async waiting(): Promise<number> {
+    const db = this.local.db;
+    return (await db.outbox.count()) + (await db.uploads.count());
+  }
+
+  // ---------------- attached files ----------------
+
+  /**
+   * Sends the files waiting in the upload queue, oldest first.
+   *  - A file whose note still has changes waiting is left for the next run (the server does not know the note yet).
+   *  - What the server REFUSES (a kind it does not allow, too large, storage full, the note is gone) is final: it
+   *    leaves the queue and this device, and the user is told. A repeat would only get the same answer.
+   *  - A lost connection or a server error stops the run: the rest waits.
+   */
+  private async uploadAttachments(): Promise<void> {
+    const db = this.local.db;
+    const notices: SyncNotice[] = [];
+    try {
+      for (const upload of await this.attachments.uploads()) {
+        if (!this.local.isOpen) return;
+        if (await hasPendingOperations(db, 'note', upload.noteId)) {
+          continue;
+        }
+        const stored = await this.attachments.blob(upload.id);
+        if (!stored) {
+          await this.attachments.drop(upload.id); // nothing left to send
+          continue;
+        }
+
+        try {
+          await firstValueFrom(this.attachmentsApi.upload(upload.id, upload.noteId, new Blob([stored.data], { type: stored.type }), stored.name));
+          await this.attachments.uploaded(upload.id);
+        } catch (error) {
+          if (!(error instanceof HttpErrorResponse) || error.status === 0) {
+            throw error; // no connection: the run ends as "offline"
+          }
+          const reason = refusalOf(error);
+          if (!reason) {
+            await this.attachments.failed(upload.id);
+            throw error; // a server problem: try again on the next run
+          }
+          await this.attachments.drop(upload.id);
+          notices.push({ kind: 'rejected', message: `"${stored.name}" was not kept: ${reason}` });
+        }
+      }
+    } finally {
+      if (notices.length > 0) this.notices.update((current) => [...current, ...notices]);
     }
   }
 

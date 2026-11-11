@@ -24,7 +24,8 @@ internal sealed class NoteSyncHandler(
     AppDbContext db,
     ICurrentUser user,
     INotebookLookup notebooks,
-    ITagLookup tags) : ISyncHandler
+    ITagLookup tags,
+    NoteRevisionRecorder revisions) : ISyncHandler
 {
     public string Entity => SyncEntities.Note;
 
@@ -164,6 +165,7 @@ internal sealed class NoteSyncHandler(
             tagIds = wantedTags.Count == 0 ? [] : await tags.FilterExistingAsync(wantedTags, ct);
         }
 
+        await revisions.RecordBeforeEditAsync(note, patch.Title, patch.Content, now, ct); // the text as it was
         note.ApplyPatch(patch.Title, patch.Content, patch.HasNotebook, notebookId, patch.IsPinned, patch.Status, tagIds, now);
     }
 

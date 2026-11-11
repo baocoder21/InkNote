@@ -1,0 +1,73 @@
+<section class="history">
+  <header class="head">
+    <div>
+      <a class="head__back" [routerLink]="['/notes', id()]" queryParamsHandling="preserve">
+        <nz-icon nzType="left" nzTheme="outline" /> Back to the note
+      </a>
+      <h2 class="head__title">History</h2>
+      <p class="head__hint">
+        @if (noteTitle()) {
+          Older versions of "{{ noteTitle() }}". }
+        The server keeps one for each editing session, and one before every restore.
+      </p>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="state"><nz-spin nzSimple /></div>
+  } @else if (problem() === 'offline') {
+    <div class="state state--empty">
+      <nz-icon nzType="disconnect" nzTheme="outline" />
+      <p>The history is kept on the server: connect to the internet to see it.</p>
+      <button nz-button type="button" (click)="load()">Try again</button>
+    </div>
+  } @else if (problem() === 'missing') {
+    <div class="state state--empty">
+      <nz-icon nzType="exclamation-circle" nzTheme="outline" />
+      <p>This note has no history on the server (it may not have been synchronized yet).</p>
+      <button nz-button type="button" (click)="load()">Try again</button>
+    </div>
+  } @else if (problem() === 'error') {
+    <div class="state state--empty">
+      <nz-icon nzType="exclamation-circle" nzTheme="outline" />
+      <p>The history cannot be loaded now.</p>
+      <button nz-button type="button" (click)="load()">Try again</button>
+    </div>
+  } @else if (items().length === 0) {
+    <div class="state state--empty">
+      <nz-icon nzType="history" nzTheme="outline" />
+      <p>No older versions yet. They appear here once you have edited the note for a while.</p>
+    </div>
+  } @else {
+    <div class="body">
+      <ul class="list" aria-label="Older versions of the note">
+        @for (item of items(); track item.id) {
+          <li class="item" [class.item--selected]="item.id === selected()?.id">
+            <button type="button" class="item__main" (click)="open(item)">
+              <span class="item__date">{{ item.createdAt | date: 'medium' }}</span>
+              <span class="item__reason">{{ label(item.reason) }}</span>
+              <span class="item__title">{{ item.title }}</span>
+              <span class="item__preview">{{ item.preview }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+
+      <article class="preview" aria-label="The selected older version">
+        @if (loadingSelected()) {
+          <div class="state"><nz-spin nzSimple /></div>
+        } @else if (selected(); as revision) {
+          <div class="preview__bar">
+            <h3 class="preview__title">{{ revision.title }}</h3>
+            <button nz-button nzType="primary" type="button" [disabled]="restoring()" (click)="confirmRestore()">
+              <nz-icon nzType="undo" nzTheme="outline" /> Restore this version
+            </button>
+          </div>
+          <app-markdown-preview [source]="revision.content" />
+        } @else {
+          <p class="preview__hint">Select a version to see what it contained.</p>
+        }
+      </article>
+    </div>
+  }
+</section>

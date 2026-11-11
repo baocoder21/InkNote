@@ -1,0 +1,83 @@
+# Continuous integration: every push and pull request builds the project and runs all the tests.
+# Three independent jobs run side by side; a red cross on GitHub means one of them failed (open it to see which step).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch cancels the run that is still going for the older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only needs to READ the code.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (build + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json # the SDK the project pins
+      # The tests start real PostgreSQL and MinIO containers (Testcontainers): the runner has Docker.
+      - run: dotnet test src/backend/InkNote.sln --configuration Release --verbosity minimal
+
+  frontend:
+    name: Frontend (unit tests + production build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - run: npm ci
+      - run: npx ng test --watch=false
+      - run: npx ng build
+      # The build used in Docker must also compile (a different API address).
+      - run: npx ng build --configuration container
+
+  e2e:
+    name: End-to-end (the whole system in Docker + Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - name: Start the system
+        run: |
+          # A throwaway signing key for this run only (the real one is never in the repository).
+          echo "JWT_KEY=$(openssl rand -base64 48)" > .env
+          docker compose --profile app up -d --build --wait
+      - name: Install the test tools
+        working-directory: src/frontend
+        run: npm ci
+      - name: Run the tests (Chrome comes with the runner)
+        working-directory: src/frontend
+        run: npx playwright test
+      - name: Keep the traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: src/frontend/e2e-results
+          if-no-files-found: ignore
+      - name: Show the logs of the containers
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail 200

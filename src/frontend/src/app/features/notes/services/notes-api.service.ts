@@ -9,6 +9,7 @@ import {
   UpdateNoteOrganizationRequest,
   UpdateNoteRequest,
 } from '../models/note.model';
+import { NoteRevision, NoteRevisionSummary } from '../models/revision.model';
 import { SearchResponse } from '../models/search.model';
 
 /** Thin wrapper over the backend REST API. It only does HTTP: no state, no UI logic. */
@@ -50,6 +51,21 @@ export class NotesApi {
       params = params.set('tagId', options.tagId);
     }
     return this.http.get<SearchResponse>(`${this.url}/search`, { params });
+  }
+
+  // ---- History (the older texts the server keeps of a note; there is no copy on the device) ----
+
+  revisions(id: string): Observable<NoteRevisionSummary[]> {
+    return this.http.get<NoteRevisionSummary[]>(`${this.url}/${id}/revisions`);
+  }
+
+  revision(id: string, revisionId: string): Observable<NoteRevision> {
+    return this.http.get<NoteRevision>(`${this.url}/${id}/revisions/${revisionId}`);
+  }
+
+  /** Puts an older text back (the server keeps the one it replaces). Answers with the note as it is now. */
+  restoreRevision(id: string, revisionId: string): Observable<Note> {
+    return this.http.post<Note>(`${this.url}/${id}/revisions/${revisionId}/restore`, null);
   }
 
   // ---- Trash (notes deleted with delete(), which only hides them) ----

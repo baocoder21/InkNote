@@ -1,0 +1,12 @@
+# What is NOT sent to Docker as "build context" (smaller, faster, and no local files or secrets inside an image).
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+InkNote.Api.Tests/
+**/appsettings.Development.json
+**/appsettings.Development.local.json
+**/.env
+**/.env.*
+Dockerfile
+.dockerignore

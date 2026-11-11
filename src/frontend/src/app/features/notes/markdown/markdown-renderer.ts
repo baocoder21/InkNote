@@ -8,6 +8,7 @@ import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
 import { CODE_THEME, getHighlighter } from './highlighter';
+import { rehypeAttachments } from './rehype-attachments';
 import { rehypeMermaidBlocks } from './rehype-mermaid-blocks';
 
 /**
@@ -28,6 +29,7 @@ async function createProcessor() {
     .use(remarkGfm) // tables, task lists, strikethrough, autolinks
     .use(remarkMath) // $inline$ and $$block$$ math
     .use(remarkRehype)
+    .use(rehypeAttachments) // attachment:<id> becomes data-attachment-id (no src, no real href)
     .use(rehypeMermaidBlocks) // before the highlighter
     .use(rehypeKatex) // a bad formula is shown as a red error block, not an exception
     .use(rehypeShikiFromHighlighter, highlighter, {
@@ -54,7 +56,8 @@ const SANITIZE_CONFIG: Config = {
 
 // Every link opens in a new tab and cannot access our page (window.opener).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (node.tagName === 'A' && node.hasAttribute('href')) {
+  // (Attachment links are not addresses: the page handles their click itself, see MarkdownPreviewComponent.)
+  if (node.tagName === 'A' && node.hasAttribute('href') && !node.hasAttribute('data-attachment-id')) {
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');
   }

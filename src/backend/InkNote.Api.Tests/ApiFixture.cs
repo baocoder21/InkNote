@@ -1,12 +1,15 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using InkNote.Api.Common.Storage;
 using InkNote.Api.Modules.Auth.Application;
 using InkNote.Api.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 
 namespace InkNote.Api.Tests;
@@ -24,16 +27,48 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Extra configuration for one test class (a subclass overrides this).</summary>
     protected virtual IReadOnlyDictionary<string, string?> Settings => new Dictionary<string, string?>();
 
-    public async Task InitializeAsync()
+    /// <summary>
+    /// true = the fixture applies the migrations itself. A test of "the API migrates on startup" returns false and
+    /// only lets the API start, to see what the API did on its own.
+    /// </summary>
+    protected virtual bool ApplyMigrations => true;
+
+    public virtual async Task InitializeAsync()
     {
         await _database.StartAsync();
+
+        if (!ApplyMigrations)
+        {
+            _ = Services; // starts the API (and with it the startup code of Program.cs)
+            return;
+        }
 
         // Apply the real migrations to the empty test database.
         using var scope = Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
     }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    /// <summary>true = attachments go to an in-memory fake (fast, no S3 server). A subclass returns false to use a real storage.</summary>
+    protected virtual bool UseFakeStorage => true;
+
+    /// <summary>The fake storage the API writes to (see <see cref="UseFakeStorage"/>): tests look inside it.</summary>
+    public FakeObjectStorage Storage { get; } = new();
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        if (UseFakeStorage)
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IObjectStorage>();
+                services.AddSingleton<IObjectStorage>(Storage);
+            });
+        }
+
+        ConfigureSettings(builder);
+    }
+
+    private void ConfigureSettings(IWebHostBuilder builder) =>
         // Point the API at the test container instead of the development database.
         builder.ConfigureAppConfiguration((_, config) =>
         {
@@ -75,5 +110,8 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     // Explicit implementation: the base factory has its own DisposeAsync (ValueTask).
-    Task IAsyncLifetime.DisposeAsync() => _database.DisposeAsync().AsTask();
+    Task IAsyncLifetime.DisposeAsync() => DisposeAsyncCore();
+
+    /// <summary>Releases what the fixture started. A subclass that starts more containers overrides this and calls the base.</summary>
+    protected virtual async Task DisposeAsyncCore() => await _database.DisposeAsync();
 }

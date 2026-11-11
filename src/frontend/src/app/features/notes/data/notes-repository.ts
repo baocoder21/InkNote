@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { live } from '../../sync/local/live';
 import { LocalDbService, LocalNote } from '../../sync/local/local-db';
-import { enqueueDelete, enqueueUpsert } from '../../sync/local/outbox';
+import { enqueueDelete, enqueueUpsert, hasPendingOperations } from '../../sync/local/outbox';
 import { Note, NoteOrganization, NoteSummary } from '../models/note.model';
 
 const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
@@ -121,6 +121,11 @@ export class NotesRepository {
       await enqueueUpsert(db, 'note', id, patch, row.version);
       return true;
     });
+  }
+
+  /** Does this note have changes that have not reached the server yet? (A restore from the history must wait for them.) */
+  hasUnsyncedChanges(id: string): Promise<boolean> {
+    return hasPendingOperations(this.local.db, 'note', id);
   }
 
   /** Deletes the note here and queues the deletion (it lands in the server's trash). @returns false when missing. */

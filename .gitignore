@@ -12,11 +12,14 @@ node_modules/
 dist/
 .angular/
 coverage/
+e2e-results/
+playwright-report/
 npm-debug.log*
 
 # --- Secrets & local config (never commit) ---
 .env
 .env.*
+!.env.example
 appsettings.Development.local.json
 *.pfx
 

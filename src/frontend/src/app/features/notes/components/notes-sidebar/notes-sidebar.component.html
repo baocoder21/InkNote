@@ -77,6 +77,7 @@
         (renameNote)="renameNote($event)"
         (togglePin)="togglePin($event)"
         (deleteNote)="confirmDeleteNote($event)"
+        (exportNote)="exportNote($event)"
       />
     }
   </div>
@@ -117,6 +118,12 @@
         {{ trash.items().length }}
       </span>
     }
+  </a>
+
+  <!-- Same look as the Trash link above. -->
+  <a class="trash-link" routerLink="/notes/transfer" routerLinkActive="trash-link--active">
+    <nz-icon nzType="export" nzTheme="outline" />
+    <span class="trash-link__name">Import &amp; export</span>
   </a>
 
   <app-sync-status

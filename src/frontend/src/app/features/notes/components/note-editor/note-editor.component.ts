@@ -15,12 +15,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { NzAlertComponent } from 'ng-zorro-antd/alert';
+import { NzIconDirective } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSegmentedComponent } from 'ng-zorro-antd/segmented';
 import { NzSpinComponent } from 'ng-zorro-antd/spin';
 import { debounceTime, exhaustMap, filter, from } from 'rxjs';
+import { AttachmentRepository } from '../../../attachments/data/attachment-repository';
+import { markdownFor } from '../../../attachments/models/attachment.model';
 import { NOTE_LIMITS, NoteOrganization } from '../../models/note.model';
 import { NotesStore } from '../../store/notes.store';
 import { OrganizationStore } from '../../store/organization.store';
@@ -44,7 +47,9 @@ type ViewMode = 'edit' | 'split' | 'preview';
   selector: 'app-note-editor',
   imports: [
     FormsModule,
+    RouterLink,
     NzAlertComponent,
+    NzIconDirective,
     NzSegmentedComponent,
     NzSpinComponent,
     MarkdownEditorComponent,
@@ -71,6 +76,7 @@ export class NoteEditorComponent {
   private readonly router = inject(Router);
   private readonly message = inject(NzMessageService);
   private readonly autosaveDelay = inject(AUTOSAVE_DELAY_MS);
+  private readonly attachments = inject(AttachmentRepository);
 
   // The last SAVED text of the open note. `equal` makes this computed return "no change" when
   // only the organization changed (pin, notebook, tags, version): those updates replace
@@ -139,6 +145,7 @@ export class NoteEditorComponent {
 
   // The title box (it only exists while a note is shown).
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
+  private readonly markdownEditor = viewChild(MarkdownEditorComponent);
 
   // Changes on every edit while there is something to save; null when there is nothing.
   private readonly pendingEdit = computed(() =>
@@ -226,6 +233,27 @@ export class NoteEditorComponent {
     const result = await this.store.saveNote(current.id, this.title().trim(), this.content());
     if (result !== 'ok') {
       this.message.warning(`Your last changes to "${current.title}" could not be saved.`);
+    }
+  }
+
+  /**
+   * Files pasted or dropped into the editor. Each one is stored on THIS device and queued for upload (so it shows at
+   * once, offline too), and the Markdown that refers to it is written where the cursor is.
+   */
+  protected async addFiles(files: File[]): Promise<void> {
+    const noteId = this.id();
+    const snippets: string[] = [];
+    for (const file of files) {
+      const result = await this.attachments.add(noteId, file);
+      if (result.status === 'ok') {
+        snippets.push(markdownFor(result.id, result.name, result.isImage));
+      } else {
+        this.message.error(`"${file.name}": ${result.reason}`);
+      }
+    }
+    // Another note may have been opened while the files were being stored: its editor must not get this Markdown.
+    if (snippets.length > 0 && this.id() === noteId) {
+      this.markdownEditor()?.insertText(snippets.join('\n') + '\n');
     }
   }
 

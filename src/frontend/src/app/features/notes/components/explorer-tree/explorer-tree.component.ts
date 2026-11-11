@@ -54,6 +54,7 @@ export class ExplorerTreeComponent {
   readonly renameNote = output<NoteSummary>();
   readonly togglePin = output<NoteSummary>();
   readonly deleteNote = output<NoteSummary>();
+  readonly exportNote = output<NoteSummary>();
 
   private readonly contextMenu = inject(NzContextMenuService);
 

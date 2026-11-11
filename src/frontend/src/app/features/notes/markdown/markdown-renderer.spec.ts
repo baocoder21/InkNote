@@ -79,6 +79,76 @@ describe('renderMarkdown', () => {
     });
   });
 
+  describe('attachments  (![name](attachment:<id>)  and  [name](attachment:<id>))', () => {
+    const ID = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+
+    it('turns an image attachment into an <img> with the id and WITHOUT a src (the page fills the src in)', async () => {
+      const img = toDom(await renderMarkdown(`![a cat](attachment:${ID})`)).querySelector('img')!;
+
+      expect(img.getAttribute('data-attachment-id')).toBe(ID);
+      expect(img.getAttribute('alt')).toBe('a cat');
+      expect(img.hasAttribute('src')).toBe(false);
+    });
+
+    it('turns a file attachment into a link that is not an address and does not open a new tab', async () => {
+      const link = toDom(await renderMarkdown(`[report.pdf](attachment:${ID})`)).querySelector('a')!;
+
+      expect(link.getAttribute('data-attachment-id')).toBe(ID);
+      expect(link.getAttribute('href')).toBe('#');
+      expect(link.hasAttribute('target')).toBe(false);
+      expect(link.textContent).toBe('report.pdf');
+    });
+
+    it('accepts the scheme in any case and writes the id in lower case', async () => {
+      const img = toDom(await renderMarkdown(`![x](ATTACHMENT:${ID.toUpperCase()})`)).querySelector('img')!;
+
+      expect(img.getAttribute('data-attachment-id')).toBe(ID);
+    });
+
+    it('leaves ordinary images and links alone', async () => {
+      const dom = toDom(await renderMarkdown('![x](https://example.com/a.png) [y](https://example.com)'));
+
+      expect(dom.querySelector('img')!.getAttribute('src')).toBe('https://example.com/a.png');
+      expect(dom.querySelector('img')!.hasAttribute('data-attachment-id')).toBe(false);
+      expect(dom.querySelector('a')!.getAttribute('target')).toBe('_blank'); // the rule for other links still holds
+    });
+
+    it('works inside other markup: in a link, a list and a table', async () => {
+      const dom = toDom(await renderMarkdown(`- [![x](attachment:${ID})](https://example.com)\n\n| a |\n|---|\n| ![y](attachment:${ID}) |`));
+
+      expect(dom.querySelectorAll('img[data-attachment-id]')).toHaveLength(2);
+    });
+
+    // Only a GUID may follow "attachment:": whatever else a user types there must never reach the page.
+    const invalid: Record<string, string> = {
+      'not a GUID': 'attachment:not-a-guid',
+      'a path': 'attachment:../../etc/passwd',
+      'javascript: after the scheme': 'attachment:javascript:alert(1)',
+      'a GUID followed by more': `attachment:${ID}/../../x`,
+      'a GUID with an attribute break-out': `<attachment:${ID}" onerror="alert(1)>`,
+      'a GUID with a trailing space': `<attachment:${ID} >`,
+      'an external address': 'attachment:https://evil.example/x.png',
+      empty: 'attachment:',
+    };
+
+    it.each(Object.entries(invalid))('drops an attachment whose id is invalid: %s', async (_name, url) => {
+      const dom = toDom(await renderMarkdown(`![x](${url}) [y](${url})`));
+
+      for (const element of Array.from(dom.querySelectorAll('img, a'))) {
+        expect(element.hasAttribute('data-attachment-id')).toBe(false);
+        expect(element.hasAttribute('src')).toBe(false);
+        expect(element.hasAttribute('href')).toBe(false);
+        expect(element.hasAttribute('onerror')).toBe(false);
+      }
+    });
+
+    it('never produces an src or href that holds an attachment: address', async () => {
+      const html = await renderMarkdown(`![a](attachment:${ID}) [b](attachment:${ID}) ![c](attachment:bad) [d](attachment:bad)`);
+
+      expect(html.toLowerCase()).not.toMatch(/(src|href)="attachment:/);
+    });
+  });
+
   describe('XSS protection', () => {
     const attacks: Record<string, string> = {
       'script tag': '<script>alert(1)</script>',

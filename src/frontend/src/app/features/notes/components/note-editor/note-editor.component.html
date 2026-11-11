@@ -14,6 +14,16 @@
         [(ngModel)]="title"
         (keydown.enter)="onTitleEnter($event)"
       />
+      <!-- The older versions of the note (kept on the server): browse them and put one back. -->
+      <a
+        class="head__history"
+        title="History"
+        aria-label="Note history"
+        [routerLink]="['/notes', note.id, 'history']"
+        queryParamsHandling="preserve"
+      >
+        <nz-icon nzType="history" nzTheme="outline" />
+      </a>
     </header>
 
     <div class="toolbar">
@@ -44,6 +54,7 @@
         class="panes__editor"
         [class.hidden]="viewMode() === 'preview'"
         [(value)]="content"
+        (filesAdded)="addFiles($event)"
       />
       @if (viewMode() !== 'edit') {
         <app-markdown-preview class="panes__preview" [source]="content()" />

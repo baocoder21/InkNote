@@ -17,10 +17,10 @@
 | MVP | 6 | Tìm kiếm full-text | [x] |
 | v1 | 7 | Local-first: lưu offline và hàng đợi đồng bộ | [x] |
 | v1 | 8 | Đồng bộ real-time bằng SignalR | [x] |
-| v1 | 9 | PWA (cài đặt như app desktop) | [~] chờ bạn kiểm tra |
-| v1 | 10 | File đính kèm | [ ] |
-| v1 | 11 | Lịch sử phiên bản, thùng rác, import/export | [ ] |
-| Hoàn thiện | 12 | Kiểm thử, Docker, CI/CD, nâng cấp .NET 10 | [ ] |
+| v1 | 9 | PWA (cài đặt như app desktop) | [x] |
+| v1 | 10 | File đính kèm | [x] |
+| v1 | 11 | Lịch sử phiên bản, thùng rác, import/export | [x] xong |
+| Hoàn thiện | 12 | Kiểm thử, Docker, CI/CD, nâng cấp .NET 10 | [x] xong (12e .NET 10 đã bỏ) |
 | v2 (tùy chọn) | 13+ | Chia sẻ link, cộng tác real-time (Yjs), E2EE, plugin/theme | [ ] |
 
 Thứ tự được sắp để **mỗi phase dựa trên phase trước và luôn có thứ chạy được** để bạn thấy kết quả sớm. Auth để ở phase 5 (sau khi đã hiểu CRUD) để bạn học từng thứ một; đổi lại sẽ phải thêm lọc theo `UserId` vào code cũ, và đó cũng là một bài học về refactor.
@@ -151,6 +151,8 @@ Thứ tự được sắp để **mỗi phase dựa trên phase trước và lu�
 - **Kết quả:** Khôi phục được bản cũ; xuất rồi nhập lại không lỗi.
 
 ## Phase 12 - Kiểm thử, Docker, CI/CD, nâng cấp .NET 10
+
+> **Phạm vi đã thu hẹp (11/2026):** app chỉ dùng cá nhân, không đưa lên internet. Đã bỏ: nâng cấp .NET 10 (không cài SDK 10), Redis, OpenTelemetry, và mọi việc chỉ phục vụ triển khai công khai (HTTPS, CSP, MinIO production). Đã xong: 12a Docker.
 
 - **Mục tiêu:** Dự án sẵn sàng triển khai và dễ bảo trì.
 - **Sẽ học:** Docker multi-stage build, GitHub Actions, Playwright E2E, Serilog/OpenTelemetry, quy trình nâng cấp runtime.

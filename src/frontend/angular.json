@@ -82,6 +82,36 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "container": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "1.2MB",
+                  "maximumError": "1.5MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
+                }
+              ],
+              "outputHashing": "all",
+              "serviceWorker": "ngsw-config.json",
+              "optimization": {
+                "scripts": true,
+                "fonts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                }
+              },
+              "fileReplacements": [
+                {
+                  "replace": "src/app/core/api.config.ts",
+                  "with": "src/app/core/api.config.container.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"

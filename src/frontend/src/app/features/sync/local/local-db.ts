@@ -63,6 +63,28 @@ export interface OutboxOp {
   createdAt: string;
 }
 
+/**
+ * The bytes of an attached file on THIS device: a file the user just added (waiting to be uploaded), or one downloaded
+ * from the server so that it can be shown offline. Kept as an ArrayBuffer, which every browser can store and copy
+ * (a Blob can be stored too, but not everywhere, notably not in the test environment).
+ */
+export interface LocalBlob {
+  id: string; // the attachment's id
+  name: string;
+  type: string; // the MIME type
+  size: number;
+  data: ArrayBuffer;
+  cachedAt: number; // when it was stored here: the oldest downloaded files are removed first when space is needed
+}
+
+/** A file waiting to be sent to the server. Its bytes are in `blobs` under the same id. */
+export interface LocalUpload {
+  id: string;
+  noteId: string;
+  createdAt: number;
+  attempts: number; // how many times the server could not take it (a server error, not a refusal)
+}
+
 export interface MetaRow {
   key: string;
   value: unknown;
@@ -76,6 +98,8 @@ export class LocalDb extends Dexie {
   tags!: Table<LocalTag, string>;
   outbox!: Table<OutboxOp, number>;
   meta!: Table<MetaRow, string>;
+  blobs!: Table<LocalBlob, string>;
+  uploads!: Table<LocalUpload, string>;
 
   constructor(name: string) {
     super(name);
@@ -88,6 +112,12 @@ export class LocalDb extends Dexie {
       tags: 'id',
       outbox: '++seq, opId, [entity+id]',
       meta: 'key',
+    });
+    // Version 2 adds the two tables for attached files. A new version is declared next to the old one (never edited
+    // in place): a browser that has version 1 is upgraded by adding the tables, and keeps all its data.
+    this.version(2).stores({
+      blobs: 'id, cachedAt',
+      uploads: 'id, noteId',
     });
   }
 }

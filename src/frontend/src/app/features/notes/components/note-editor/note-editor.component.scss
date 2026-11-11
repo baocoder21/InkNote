@@ -50,6 +50,22 @@
 
 // Row with the organization pickers on the left and the Edit/Split/Preview switch in the middle:
 // the two outer columns are equal (1fr) so the switch sits in the true center of the row.
+.head__history {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem;
+  border-radius: 5px;
+  color: var(--ink-text-muted);
+  font-size: 1.1rem;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--ink-bg-hover);
+    color: var(--ink-accent);
+    outline: none;
+  }
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

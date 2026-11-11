@@ -24,6 +24,15 @@ export class OrganizationRepository {
     return live(() => this.local.db.tags.toArray()).pipe(map((rows) => rows.map(this.toTag)));
   }
 
+  /** What exists right now (not a stream): for the import, which reuses folders and tags that are already here. */
+  async listNotebooks(): Promise<Notebook[]> {
+    return (await this.local.db.notebooks.toArray()).map(this.toNotebook);
+  }
+
+  async listTags(): Promise<Tag[]> {
+    return (await this.local.db.tags.toArray()).map(this.toTag);
+  }
+
   async createNotebook(name: string, parentId: string | null): Promise<Notebook> {
     const db = this.local.db;
     const row: LocalNotebook = { id: crypto.randomUUID(), name, parentId, version: 0 };

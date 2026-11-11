@@ -555,3 +555,177 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - Offline needs two things: the program (service worker) and the data (local database). Keep their strategies separate.
 - A new layer between two others (here the service worker between the page and the network) can change what the lower one reports. Test with the layer present, in the real thing.
 - Never swap a running program under a user: download in the background, tell them, let them choose when to reload.
+
+## Phase 10 - Files attached to notes (upload, object storage, presigned URLs)
+
+**Concepts**
+- **Multipart upload**: one HTTP request that carries text fields and a file (`multipart/form-data`). ASP.NET Core reads it into `IFormFile`. A Bearer-token API has no cookie to forge, which is why antiforgery is switched off for this endpoint.
+- **Object storage (S3)**: a store of "objects" (files) addressed by a key, over HTTP; cheap and scalable. **S3** is the API standard, **R2** is Cloudflare's service with the same API, **MinIO** is a server with the same API for development. The database holds the RECORD of a file, the storage holds its BYTES.
+- **Presigned URL**: an address that carries a signature (made with the server's secret key) and an expiry. Whoever holds it can read that ONE object until it expires, without signing in. The server hands it out only after checking ownership; the secret key never leaves the server.
+- **Magic bytes**: a real PNG always starts with the same 8 bytes, a PDF with `%PDF-`, and so on. The name and the Content-Type come from the client and can lie; the bytes cannot (for these formats). The server decides the type from the bytes and refuses what it does not know.
+- **Idempotent upload with a client-chosen id**: the app invents the id, so it can write the link before the file is anywhere, and repeating an upload changes nothing.
+
+**How it fits together**
+1. You paste an image. The editor reports the file; `NoteEditorComponent` asks `AttachmentRepository` to store it: bytes into `blobs` and a row into `uploads`, one transaction. `![photo](attachment:<id>)` is written at the cursor.
+2. The preview sees `attachment:<id>` (the renderer turned it into `data-attachment-id` with NO `src`) and asks `AttachmentResolver`: found on this device, so it shows at once from a `blob:` address.
+3. The sync engine, after pushing the note, sends the file (`POST /api/attachments`). The server reads it with a size cap, detects the type, checks the quota, puts the bytes in the storage and the record in the database.
+4. Another device draws the note: the file is not there, so the resolver gets a presigned URL from the server, downloads the bytes, keeps them, and shows them. Offline, the kept copy is used.
+5. Delete the note for good: the server deletes its records and then its objects.
+
+**How to verify**
+1. `docker compose up -d storage` (MinIO on :9000, console on http://localhost:9001, login `inknote` / `inknote_dev_secret`). The migration `AddAttachments` and the storage settings are already in place for your development database; the storage keys are in your user-secrets. Restart the API.
+2. Open a note, copy an image (a screenshot, or "Copy image" in a browser) and press Ctrl+V in the editor, or drag an image or PDF file onto it. The Markdown appears at the cursor and the image shows in the preview at once. After a moment the status line says "All changes synced". In the MinIO console you will see the object in the bucket `inknote-attachments`.
+3. Open the app in a second browser window with the same account: the image appears there too.
+4. DevTools, Network, "Offline": paste another image: it still shows, the status line counts it, and it is uploaded when you go online again.
+5. Try a file that is not allowed (an `.svg`, a `.zip`) or one over 10 MB: a message appears and nothing is written. Rename a binary file to `.txt` and paste it: the server refuses it and tells you.
+6. Click the link of a PDF: it is saved. Move the note to the trash and empty the trash: the file disappears from the MinIO console.
+7. `dotnet test --configuration Release` (337 tests; some start a MinIO container), `ng test --watch=false` (527 tests).
+
+**Pitfalls (met while building)**
+- **`"\x89PNG"u8` is NOT the PNG signature.** A `u8` string literal is UTF-8 text, where the character U+0089 becomes TWO bytes (`C2 89`). Every PNG was refused until a test with a real signature failed. Write signatures as byte arrays.
+- **The SDK signs `https://` URLs by default** whatever the endpoint is. Against plain-http MinIO the upload worked and every download failed with an SSL error. Only a test against a REAL storage found it (the in-memory fake cannot).
+- **Newer S3 SDKs add checksum headers** that R2 and older MinIO builds reject: ask for checksums only where the API requires them.
+- **Dexie's out-of-space error is not a `DOMException`**; it has its own class that only shares the name `QuotaExceededError`. Check the name.
+- **Never evict the file you just stored** when pruning a cache: if the files waiting to upload alone fill the limit, the picture the user is looking at would vanish.
+- .NET's `HttpClient` itself refuses a double quote in the file name of a multipart part, so a test cannot send such a name through it: test the code that builds the download header directly with that name instead.
+- An in-memory fake of the storage is fine for hundreds of fast tests, but it proves nothing about signatures, expiry, CORS or headers: keep a few tests (and one browser run) against the real thing.
+- A paste event from a test must carry whatever CodeMirror itself reads (`getData`), or it fails inside CodeMirror and the real problem hides behind it.
+
+**Honest limits**: files that the user removes from the text stay in the storage until the note is deleted for good (no clean-up of unreferenced files); a refused file leaves its (now dangling) Markdown in the note; the other devices learn of a file only when they draw the note; keeping a copy of a downloaded file needs the storage to allow CORS (R2 needs a rule on the bucket; the pictures show anyway, they are just not kept); no image resizing or thumbnails; no virus scan; the development storage image is frozen and must stay on localhost; an offline device cannot show a file it never opened while online.
+
+**Key takeaways**
+- Keep the bytes where bytes belong (an object storage) and a small record where queries belong (the database); hand out short-lived signed addresses instead of proxying every download.
+- Never trust what the client says about a file: decide the type from the bytes, count the size while reading, and make the key from ids only.
+- Local-first applies to files as well: write to the device first, queue the upload, let the order of the queue respect what depends on what (the note before its file).
+- Run a few tests against the real service. Two bugs here (the PNG signature and the `https://` URL) were invisible to every test that used a fake.
+
+
+## Phase 11 - Version history, import and export
+
+**Goal**: never lose text, and let the user take notes out of InkNote (and bring notes in) in a format every other tool understands.
+
+**Concepts**
+- **Version history = snapshots, not a full recording.** Saving a version on every keystroke would make thousands of rows. Instead the server keeps the text as it was BEFORE an edit, but at most one per 10 minutes ("a throttle"), and keeps the last 50 per note. You get a few meaningful checkpoints, not noise.
+- **Restore is an edit, not a rewind.** Putting an old text back creates a NEW version of the note (the version number goes up, other devices pull it like any change), and the text it replaced is saved first. Nothing is ever destroyed by restoring, so a wrong click can be undone.
+- **Why the server restores and the history stays online-only.** The history lives on the server (it was born from sync conflicts there). Copying it to every device would need its own sync protocol for rarely used data. The cost is that the History page needs a connection; the page says so and offers "Try again".
+- **Front matter**: a small block between two `---` lines at the top of a Markdown file (`title`, `tags`, ...). It is a convention from static-site tools and note apps, so Obsidian, VS Code and others read it. Strings are written JSON-quoted, which makes a colon or a quote in a title harmless.
+- **Zip**: a container of files, each compressed, with a directory at the end. We read and write it in the browser with `fflate`. Because the app is local-first, export/import read and write IndexedDB directly and need no server.
+- **A zip is untrusted input.** A "zip bomb" is a tiny file that expands to gigabytes; its header can claim a small size while the data is huge. So the reader counts the bytes it REALLY produced while inflating and stops at the limits. Paths like `../../x` ("zip slip") would write outside the target folder, so they are dropped.
+- **Round-trip test**: export, then import into a fresh account, then compare. If nothing differs (text, notebooks, tags, status, pin, picture bytes), both directions are right. This one test caught more than a dozen small unit tests.
+
+**How it works**
+1. Editing a note (via the editor or a synced change): `NoteRevisionRecorder` decides whether to snapshot the old text, then the edit is applied.
+2. History page (`/notes/:id/history`): list of summaries, click one to read it, "Restore this version" (confirm) asks the server, then the app syncs and returns to the note.
+3. Export: read notes, notebooks, tags from Dexie; build `.md` files with front matter; fetch the bytes of each attachment (from this device, or downloaded); zip; save. One note: the same, one file.
+4. Import: read each file (a zip is unpacked with limits); parse front matter; create notebooks and tags that do not exist; create the notes through the normal local write path (so they sync like any note); attach linked pictures; show a report with what was left out and why.
+
+**How to verify**
+1. Restart the API (no migration this time; optional setting `Notes:Revisions:Interval`, default 10 minutes; for a quick try set it to `00:00:05` in user-secrets or an environment variable `Notes__Revisions__Interval`).
+2. Write a note, wait, change the text a few times (waiting longer than the interval between changes). Open "History" in the editor header: older texts are listed. Select one, "Restore this version": the note shows the old text. Open History again: the text you replaced is in the list (label "Before an older version was put back"), restore it to undo.
+3. Open the same note in a second window: it follows the restore by itself.
+4. Sidebar, "Import & export", "Export all notes": a zip downloads. Open it with any unzip tool: folders for notebooks, `.md` files with a header, `_attachments/` with your pictures.
+5. Sign in with ANOTHER account, import that zip: the notes, notebooks, tags, status, pins and pictures appear. Import it again: you get copies (nothing is overwritten).
+6. Right-click a note in the sidebar, "Export": one `.md` file.
+7. Try to import a `.docx`, or a zip that contains an unreadable file: the "Left out" list says what and why.
+8. `dotnet test` (370 tests), `ng test --watch=false` (721 tests).
+
+**Pitfalls (met while building)**
+- **A first version of the policy snapshotted the trivial first saves of a new note** (the age was counted only from the last revision). Fix: with no revision yet, count from the creation time of the note.
+- **`encodeURIComponent` leaves `(` and `)` alone**, but they end a Markdown link `[x](...)` early. File names in links need those two encoded as well.
+- **Check limits in the right order**: a per-entry limit must be checked before the total, otherwise the message names the wrong limit. When an entry is dropped, give its bytes back to the total.
+- **jsdom has no reliable `Blob.arrayBuffer()` / `new Response(blob)`**: tests read bytes through a small helper. The browser run is what proves the real behavior.
+- **Autosave takes a moment**: in a browser script "synced" is true BEFORE the typed change is queued. Wait until the status leaves "synced", then until it returns.
+- A listing endpoint that used to return full texts now returns summaries: every old script and test that read `content` from the list had to read the detail instead (and one old browser script did).
+
+**Honest limits**: the history needs a connection; the first 10 minutes of a NEW note have no snapshots (by design); a note in the trash cannot be restored to an older text until it is restored from the trash; import ignores the dates written in files; importing twice duplicates; there is no side-by-side comparison of versions; the trash is not purged automatically; exporting a picture never opened on this device needs a connection.
+
+**Key takeaways**
+- A history is a policy (when to snapshot, how many to keep), not just a table. Decide the policy first, put it in ONE place used by every write path, and test it with time controlled by a setting.
+- Restore by writing a new version and saving what you replace; then no mistake is permanent.
+- Anything that comes from outside (a zip, a file name, a path, a front matter block) is untrusted: count what you really read, limit it, drop what is unsafe, and tell the user what was left out.
+- Test a feature that has two directions (export/import) as a round trip against the real thing, in a real browser, with a second account.
+
+**Read next**: [fflate](https://github.com/101arrowz/fflate), [Zip Slip](https://security.snyk.io/research/zip-slip-vulnerability), [Markdown front matter (Jekyll docs)](https://jekyllrb.com/docs/front-matter/), [File API on MDN](https://developer.mozilla.org/en-US/docs/Web/API/File_API).
+
+
+## Phase 12 - Tests, Docker, CI/CD, .NET 10 (in steps)
+
+### 12a - The whole system in Docker
+
+**Goal**: one command builds and starts everything (database, storage, API, web), the same way on any machine.
+
+**Concepts**
+- **Image and container.** An image is a sealed package (a minimal operating system + a runtime + your app). A container is one running process started from an image. Throw it away and start another: nothing was changed inside the image.
+- **Multi-stage build.** Stage 1 uses the big SDK image (compilers, ~1 GB) to build. Stage 2 starts from the small runtime image and only COPIES the result. The final image has no compiler, no source code, no test project.
+- **Layer cache.** Each Dockerfile line is a cached layer. Copy the package list first and restore packages, THEN copy the source: editing C# code then reuses the cached (slow) package download.
+- **Docker Compose.** One file that describes several containers and how they connect. Inside its private network, containers reach each other by service name (`db`, `storage`, `api`): `Host=db`. A **profile** makes some services opt-in (`--profile app`).
+- **Reverse proxy.** nginx is the only door. It serves the static files and forwards `/api/` and `/hubs/` to the API. For the browser it is ONE address, so there is no CORS and cookies work; the API is not reachable from outside at all.
+- **Two addresses for the same storage.** The server reaches MinIO as `http://storage:9000` (inside the network) but the BROWSER must download from `http://localhost:9000`: that is exactly what `Storage:PublicUrl` was made for in Phase 10.
+- **Secrets are not in the image.** The JWT key comes from an environment variable (a `.env` file next to `docker-compose.yml`, git-ignored). An image can be pushed to a registry: anything baked in leaks with it.
+
+**How it works**
+1. `docker compose --profile app up -d --build`: builds `inknote-api` and `inknote-web`, starts `db` and `storage` (waits until healthy), then `api` (runs the migrations on its empty database, answers `/api/health`), then `web`.
+2. The browser opens `http://localhost:8080`: nginx sends the Angular app; the app calls `/api/...` on the same address; nginx forwards to `api:8080`.
+3. A picture upload goes api → storage; the download link points the browser straight to `localhost:9000`.
+
+**How to verify**
+1. Copy `.env.example` to `.env` and set `JWT_KEY` (`openssl rand -base64 48`, or any random text of 32+ characters).
+2. `docker compose --profile app up -d --build` (the first build takes a few minutes), then open http://localhost:8080. NOTE: this uses the same database `inknote` as your development setup (same volume); to try it without touching your notes add `POSTGRES_DB=inknote_try` to `.env`.
+3. Register, write a note, paste a picture. Open a private window, sign in with the same account: the note and picture arrive. In DevTools, Network, filter "WS": a connection to `/hubs/sync`.
+4. `docker compose ps`: `api` is "healthy". `docker logs inknote-api`: the migrations ran. `curl -I http://localhost:8080/` shows `Cache-Control: no-cache`; a `main-*.js` file has a one-year `Expires`.
+5. Stop: `docker compose --profile app down` (your data stays in the volumes).
+6. `dotnet test` (373 tests, 3 new for the migration setting).
+
+**Pitfalls (met while building)**
+- **`.dockerignore` can hide a file the Dockerfile needs** (`nginx.conf` was listed there by mistake: "not found" in the last stage).
+- **nginx `add_header` in a `location` REPLACES the ones from `server`**: the security headers vanished from those paths. `expires` sets `Cache-Control` without this effect.
+- **The runtime image has no `curl`**, so a healthcheck must use what exists (bash `/dev/tcp`).
+- **Git Bash rewrites paths** like `/bitnami/...` into `C:/Program Files/Git/...` in the arguments of `docker exec` (set `MSYS_NO_PATHCONV=1`): a "0 files" answer came from a wrong path, not from an empty folder.
+- **Navigating away while a token refresh is in flight loses the new refresh cookie** (the response never arrives, the server already rotated the token). A browser script that clicks "online" and navigates at once did this once in a dozen runs; the app's own retry cannot help because the new token was never delivered. Real people hardly do it; a test must wait for the page to settle first.
+- A test that ran 3 times is not "stable": the browser scenario was repeated 10 times in a row to be sure.
+
+**Honest limits**: no Content-Security-Policy yet; no HTTPS (put a TLS terminator in front, e.g. Caddy or a cloud load balancer: the `X-Forwarded-Proto` handling is ready); the storage in this file is the frozen development MinIO; data-protection keys live inside the container; migrations run inside the API (fine for one instance).
+
+**Key takeaways**
+- A container is built from what you COPY into it: keep secrets and machine-specific files out (`.dockerignore`, environment variables).
+- Make the browser see one origin: it removes a whole class of problems (CORS, cookie paths, mixed addresses).
+- "Works on my machine" becomes "works in this image" only after you have run the real thing end to end, several times.
+
+### 12b/12c/12d - End-to-end tests, CI, structured logging
+
+**Goal**: a safety net you can run with one command (and that GitHub runs by itself), and logs that help when something breaks without ever leaking a note or a token.
+
+**Concepts**
+- **Test pyramid.** Many fast unit tests (721 in the frontend, 378 in the backend), few slow end-to-end tests that drive a real browser through the real system. E2E tests are expensive and sometimes flaky, so they cover only the main journeys: sign up, sync between two devices, offline, pictures, export/import.
+- **Playwright.** A library that remote-controls a real Chrome: click, type, wait. `expect(locator).toHaveText(...)` WAITS and retries until the condition holds (or times out), which is what makes browser tests reliable. A "locator" must match exactly one element (strict mode), so it has to be precise.
+- **Isolation.** Every test makes its own account. Then tests can run in any order, and a failure in one cannot cause a failure in another.
+- **CI (continuous integration).** A server that builds and tests every push from a clean machine. "It works on my computer" is checked against a computer that has nothing of yours. GitHub Actions describes this in a YAML file in `.github/workflows/`: jobs (run in parallel), steps (run in order), `uses:` (a ready-made step).
+- **Structured logging.** `Log.Information("Imported {Count} notes", n)` stores `Count` as a field, so logs can be searched and counted, not only read. A **sink** is where events go (console, file, a server). `ReadFrom.Configuration` lets `appsettings.json` choose levels without recompiling.
+- **A log is a copy of your data that lives longer than the data.** So the rule is: log ids, counts, status codes and durations; never note text, passwords or tokens. A URL can hide a secret too (`?access_token=...`): log the path only.
+
+**How it works**
+1. `UseSerilog` builds the logger from configuration; `UseSerilogRequestLogging` writes `HTTP GET /api/notes responded 200 in 4.2 ms` after each request.
+2. `npm run e2e` starts Chrome, opens the Docker stack at `http://localhost:8080`, registers a user, and runs a journey; a second browser context plays "another device".
+3. On every push GitHub starts three machines: backend tests, frontend tests + builds, and the e2e journey on the whole stack.
+
+**How to verify**
+1. Logs: `docker compose --profile app up -d --build`, open the app, click around, then `docker logs inknote-api`: one short line per request, no query strings, no note text; the health check is silent.
+2. E2E: with the stack running (`.env` with `JWT_KEY`; add `POSTGRES_DB=inknote_e2e` to keep your own notes untouched), `cd src/frontend` and `npm run e2e`: 7 tests, about 3 minutes. Watch one: `npx playwright test --headed e2e/sync.e2e.ts`. After a failure: `npx playwright show-trace e2e-results/<test>/trace.zip`.
+3. CI: push to GitHub and open the "Actions" tab: three jobs; green check = all passed.
+4. `dotnet test` (378 tests), `ng test --watch=false` (721 tests).
+
+**Pitfalls (met while building)**
+- **Strict mode**: `app-note-editor input` found 7 inputs (title, three pickers, three radio buttons of the Edit/Split/Preview switch). The old scratch scripts used an older API that took the first match silently; Playwright Test refuses. Use `getByLabel('Note title')`.
+- **A static logger is shared by the whole process**: Serilog's request-logging middleware writes to `Log.Logger` unless told otherwise. With one test host per fixture, the logs of one fixture went to another host's logger, and the logging tests failed ONLY when the whole suite ran, never alone. Hand the middleware THIS host's logger.
+- **A test that checks "X is not in the log" proves nothing if the log is empty.** Each such test first asserts that its request WAS logged. A "mutation check" (loosen the log level on purpose and see the tests fail) showed they really catch a leak.
+- **Env var names with a dot** (`Serilog__...__Microsoft.AspNetCore`) cannot be written as `NAME=value command` in Bash; use `env "NAME=value" command`.
+- A first run of a browser suite that passes once is not proof: it was repeated 3 times in a row.
+
+**Honest limits**: the CI file has not run yet (it needs a push to GitHub; if a step fails, read its log and fix the YAML); the e2e suite leaves test accounts in the database and orphan pictures in the storage; history, trash and search have no e2e journey (covered by unit and API tests); there is no log file or log viewer, only `docker logs`.
+
+**Key takeaways**
+- Few, broad end-to-end tests on the REAL system plus many small unit tests: each kind catches what the other cannot.
+- Wait for conditions, never for time: `expect(...).toHaveText` retries; a fixed `sleep` is a flaky test waiting to happen.
+- Treat logs as data that must be protected: decide what may be written, and write a test that proves the rest never is.
+
+**Read next**: [Playwright intro](https://playwright.dev/docs/intro), [Playwright locators](https://playwright.dev/docs/locators), [GitHub Actions: workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions), [Serilog.AspNetCore](https://github.com/serilog/serilog-aspnetcore).

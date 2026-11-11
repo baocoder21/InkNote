@@ -7,7 +7,8 @@
     "build": "ng build",
     "preview": "ng build && node tools/serve-dist.mjs",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "e2e": "playwright test"
   },
   "private": true,
   "packageManager": "npm@11.19.0",
@@ -32,6 +33,7 @@
     "codemirror": "^6.0.2",
     "dexie": "^4.4.7",
     "dompurify": "^3.4.17",
+    "fflate": "0.8.3",
     "katex": "^0.19.1",
     "mermaid": "^12.3.0",
     "ng-zorro-antd": "^22.2.0",
@@ -50,7 +52,9 @@
     "@angular/build": "^22.2.6",
     "@angular/cli": "^22.2.6",
     "@angular/compiler-cli": "^22.2.0",
+    "@playwright/test": "^1.65.0",
     "@types/hast": "^3.0.5",
+    "@types/node": "^24.19.2",
     "fake-indexeddb": "^6.2.8",
     "jsdom": "^30.0.0",
     "prettier": "^3.8.1",

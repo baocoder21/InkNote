@@ -1,0 +1,99 @@
+<section class="transfer">
+  <header class="head">
+    <h2 class="head__title">Import &amp; export</h2>
+    <p class="head__hint">
+      Take your notes out of InkNote, or bring notes in. It works with the notes on this device, also without a connection.
+    </p>
+  </header>
+
+  <div class="panels">
+    <section class="panel" aria-labelledby="export-title">
+      <h3 id="export-title" class="panel__title">Export</h3>
+      <p class="panel__text">
+        All your notes as one zip file of Markdown files: a folder for each notebook, a header with the title, tags, status
+        and pin, and the pictures and files of your notes next to them. Any Markdown tool can open it, and InkNote can read it
+        back. Notes in the trash are not included. To export a single note, use "Export" in its menu in the sidebar.
+      </p>
+      <button nz-button nzType="primary" type="button" [disabled]="exporting()" (click)="exportAll()">
+        @if (exporting()) {
+          <nz-spin nzSimple nzSize="small" />
+        } @else {
+          <nz-icon nzType="export" nzTheme="outline" />
+        }
+        Export all notes (.zip)
+      </button>
+
+      @if (exported(); as result) {
+        <p class="result" role="status">{{ exportSummary(result) }}</p>
+        @if (result.missingAttachments > 0) {
+          <p class="result result--warning" role="status">
+            {{ result.missingAttachments }}
+            {{ result.missingAttachments === 1 ? 'file is' : 'files are' }} not on this device and could not be downloaded
+            now (are you offline?), so the notes still link to {{ result.missingAttachments === 1 ? 'it' : 'them' }} as they are.
+            Export again when you are online.
+          </p>
+        }
+      }
+    </section>
+
+    <section class="panel" aria-labelledby="import-title">
+      <h3 id="import-title" class="panel__title">Import</h3>
+      <p class="panel__text">
+        Choose Markdown files (.md, .markdown, .txt) or zip files of them: one made by InkNote, or from another app. A folder
+        of a zip becomes a notebook, the tags in a file's header become tags, and pictures and PDFs that a note links to are
+        attached to it. Nothing you have is changed: importing the same file twice makes copies.
+      </p>
+      <label class="file-button" [class.file-button--busy]="importing()">
+        <input
+          class="file-button__input"
+          type="file"
+          multiple
+          accept=".md,.markdown,.txt,.zip,application/zip"
+          [disabled]="importing()"
+          (change)="import($event)"
+        />
+        @if (importing()) {
+          <nz-spin nzSimple nzSize="small" />
+        } @else {
+          <nz-icon nzType="import" nzTheme="outline" />
+        }
+        Choose files to import…
+      </label>
+
+      @if (report(); as result) {
+        <div class="result" role="status">
+          <strong>
+            @if (result.notes === 0) {
+              No notes were imported.
+            } @else {
+              Imported {{ result.notes }} {{ result.notes === 1 ? 'note' : 'notes' }}.
+            }
+          </strong>
+          @if (result.notebooksCreated + result.tagsCreated + result.attachments > 0) {
+            <span>
+              Created {{ result.notebooksCreated }} {{ result.notebooksCreated === 1 ? 'notebook' : 'notebooks' }},
+              {{ result.tagsCreated }} {{ result.tagsCreated === 1 ? 'tag' : 'tags' }}, and attached
+              {{ result.attachments }} {{ result.attachments === 1 ? 'file' : 'files' }}.
+            </span>
+          }
+          @if (result.unusedFiles > 0) {
+            <span>
+              {{ result.unusedFiles }} {{ result.unusedFiles === 1 ? 'file' : 'files' }} in the zip {{ result.unusedFiles === 1 ? 'was' : 'were' }} not used
+              (no note refers to {{ result.unusedFiles === 1 ? 'it' : 'them' }}).
+            </span>
+          }
+        </div>
+        @if (result.skipped.length > 0) {
+          <div class="result result--warning">
+            <strong>Left out ({{ result.skipped.length }}):</strong>
+            <ul class="skipped">
+              @for (item of result.skipped; track $index) {
+                <li><span class="skipped__name">{{ item.name }}</span>: {{ item.reason }}</li>
+              }
+            </ul>
+          </div>
+        }
+      }
+    </section>
+  </div>
+</section>

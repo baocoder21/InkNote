@@ -11,7 +11,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-inknote}
     ports:
       # host:container. 5433 on the host because a local PostgreSQL service may already own 5432.
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - inknote-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -20,5 +20,82 @@ services:
       timeout: 3s
       retries: 10
 
+  # S3-compatible object storage for attachments (images, files). In production this is Cloudflare R2 or AWS S3:
+  # the application talks to the S3 API only, so only the settings change.
+  # This is MinIO. Its project stopped publishing images (minio/minio is gone from Docker Hub), so this uses the last
+  # Bitnami build: FROZEN, no security updates, AGPLv3. Acceptable ONLY as a local development tool on localhost
+  # (nothing of it ships with InkNote); never expose it, never use it in production.
+  storage:
+    image: bitnamilegacy/minio:latest
+    container_name: inknote-storage
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-inknote}
+      # Dev-only default (MinIO requires at least 8 characters). Override via a local .env file.
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-inknote_dev_secret}
+      MINIO_DEFAULT_BUCKETS: inknote-attachments
+    ports:
+      - "127.0.0.1:9000:9000" # the S3 API (the application and, through presigned URLs, the browser)
+      - "127.0.0.1:9001:9001" # web console: http://localhost:9001
+    volumes:
+      - inknote-storage-data:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---- The application itself (profile "app") ----
+  # Not started by a plain `docker compose up -d` (that stays "database + storage" for development on the host).
+  # The whole system, one command:   docker compose --profile app up -d --build      then open http://localhost:8080
+  # Needs JWT_KEY in a local .env file (copy .env.example). The API is NOT published to the host: only the web server is,
+  # and it forwards /api and /hubs to the API, so the browser sees one origin.
+  api:
+    profiles: ["app"]
+    build:
+      context: ./src/backend
+    image: inknote-api
+    container_name: inknote-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    environment:
+      Database__MigrateOnStartup: "true" # a new database is empty: create the tables first
+      ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB:-inknote};Username=${POSTGRES_USER:-inknote};Password=${POSTGRES_PASSWORD:-inknote_dev}
+      # The signing key of the access tokens (a SECRET, at least 32 characters). Left empty here on purpose: the API then
+      # refuses to start with a clear message instead of running with a guessable key.
+      Jwt__Key: ${JWT_KEY:-}
+      Storage__ServiceUrl: http://storage:9000 # where the SERVER reaches the storage (inside the compose network)
+      Storage__PublicUrl: ${STORAGE_PUBLIC_URL:-http://localhost:9000} # what the BROWSER must use in download links
+      Storage__AccessKey: ${MINIO_ROOT_USER:-inknote}
+      Storage__SecretKey: ${MINIO_ROOT_PASSWORD:-inknote_dev_secret}
+      Storage__Bucket: inknote-attachments
+      # Behind nginx the API sees nginx as the client: trust X-Forwarded-For/-Proto so that the rate limit counts the real
+      # address and the cookie is marked Secure when the outer connection is HTTPS. Safe ONLY because the API is not published.
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+    healthcheck:
+      # The runtime image has no curl/wget: open the port with bash and send the request by hand.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf \"GET /api/health HTTP/1.0\\r\\n\\r\\n\" >&3 && head -n1 <&3 | grep -q 200'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    profiles: ["app"]
+    build:
+      context: ./src/frontend
+    image: inknote-web
+    container_name: inknote-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+
 volumes:
   inknote-db-data:
+  inknote-storage-data:

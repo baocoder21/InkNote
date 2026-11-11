@@ -90,7 +90,8 @@ describe('NotesPageComponent', () => {
   it('asks the server only for the trash (the one thing that is not on this device)', async () => {
     await show();
 
-    expect(http.match(TRASH)).toHaveLength(1);
+    // The request is sent right after the list is read from this device: wait for it. expectOne also proves it is exactly ONE.
+    await vi.waitFor(() => http.expectOne(TRASH).flush([]));
     http.expectNone((r) => r.url.endsWith('/api/notes')); // the list does not come from the server
   });
 
@@ -141,7 +142,7 @@ describe('NotesPageComponent', () => {
     const warning = vi.spyOn(message, 'warning');
     const error = vi.spyOn(message, 'error');
     await show();
-    answerTrash();
+    await vi.waitFor(() => http.expectOne(TRASH).flush([])); // the first load
 
     engine.notices.set([
       { kind: 'conflict', message: 'Both devices edited "Plan"; the other text was kept as a revision.' },
@@ -156,12 +157,12 @@ describe('NotesPageComponent', () => {
 
   it('reloads the trash when changes reached the server (a deletion puts a note there)', async () => {
     await show();
-    answerTrash(); // the first load
+    await vi.waitFor(() => http.expectOne(TRASH).flush([])); // the first load
 
     engine.pushedCount.set(1);
     await settle();
 
-    await vi.waitFor(() => expect(http.match(TRASH)).toHaveLength(1));
+    await vi.waitFor(() => http.expectOne(TRASH).flush([])); // and exactly one more
   });
 
   it('says so when the database of this browser cannot be opened (private browsing), and loads nothing', async () => {

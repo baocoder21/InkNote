@@ -1,4 +1,5 @@
 using InkNote.Api.Common;
+using InkNote.Api.Modules.Attachments.Contracts;
 using InkNote.Api.Modules.Notebooks.Contracts;
 using InkNote.Api.Modules.Notes.Contracts;
 using InkNote.Api.Modules.Notes.Domain;
@@ -29,6 +30,8 @@ public sealed class NoteService(
     ICurrentUser user,
     INotebookLookup notebooks,
     ITagLookup tags,
+    IAttachmentCleanup attachments,
+    NoteRevisionRecorder revisions,
     TimeProvider clock)
 {
     private const string NotebookNotFound = "The notebook does not exist.";
@@ -94,7 +97,9 @@ public sealed class NoteService(
             return new UpdateNoteResult(UpdateNoteStatus.Conflict);
         }
 
-        note.Update(request.Title, request.Content, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        await revisions.RecordBeforeEditAsync(note, request.Title, request.Content, now, ct); // the text as it was
+        note.Update(request.Title, request.Content, now);
 
         if (!await TrySaveAsync(ct))
         {
@@ -155,8 +160,10 @@ public sealed class NoteService(
         return true;
     }
 
-    /// <summary>The saved older texts of a note (newest first), or null when the note does not exist (a note in the trash counts).</summary>
-    public async Task<IReadOnlyList<NoteRevisionDto>?> GetRevisionsAsync(Guid noteId, CancellationToken ct)
+    private const int PreviewLength = 200;
+
+    /// <summary>The saved older texts of a note (newest first, WITHOUT their whole text), or null when the note does not exist (a note in the trash counts).</summary>
+    public async Task<IReadOnlyList<NoteRevisionSummaryDto>?> GetRevisionsAsync(Guid noteId, CancellationToken ct)
     {
         if (!await db.NotesIncludingDeleted.AnyAsync(n => n.Id == noteId, ct))
         {
@@ -166,8 +173,51 @@ public sealed class NoteService(
         return await db.NoteRevisions.AsNoTracking()
             .Where(r => r.NoteId == noteId)
             .OrderByDescending(r => r.CreatedAt)
-            .Select(r => new NoteRevisionDto(r.Id, r.NoteId, r.Title, r.Content, r.NoteVersion, r.Reason, r.CreatedAt))
+            .Select(r => new NoteRevisionSummaryDto(
+                r.Id,
+                r.NoteId,
+                r.Title,
+                r.Content.Length > PreviewLength ? r.Content.Substring(0, PreviewLength) : r.Content,
+                r.Content.Length,
+                r.NoteVersion,
+                r.Reason,
+                r.CreatedAt))
             .ToListAsync(ct);
+    }
+
+    /// <summary>One saved text with its whole content, or null when the note or the revision does not exist (or is not the user's).</summary>
+    public async Task<NoteRevisionDto?> GetRevisionAsync(Guid noteId, Guid revisionId, CancellationToken ct) =>
+        await db.NoteRevisions.AsNoTracking()
+            .Where(r => r.NoteId == noteId && r.Id == revisionId)
+            .Select(r => new NoteRevisionDto(r.Id, r.NoteId, r.Title, r.Content, r.NoteVersion, r.Reason, r.CreatedAt))
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// Puts an older text back as the note's text. The text that is replaced is saved first (a restore can be undone).
+    /// Only a note that is not in the trash: restore it from there first.
+    /// </summary>
+    public async Task<UpdateNoteResult> RestoreRevisionAsync(Guid noteId, Guid revisionId, CancellationToken ct)
+    {
+        var note = await db.Notes.Include(n => n.Tags).FirstOrDefaultAsync(n => n.Id == noteId, ct);
+        var revision = note is null
+            ? null
+            : await db.NoteRevisions.AsNoTracking().FirstOrDefaultAsync(r => r.NoteId == noteId && r.Id == revisionId, ct);
+        if (note is null || revision is null)
+        {
+            return new UpdateNoteResult(UpdateNoteStatus.NotFound);
+        }
+
+        if (note.Title == revision.Title && note.Content == revision.Content)
+        {
+            return new UpdateNoteResult(UpdateNoteStatus.Updated, NoteDto.From(note)); // it already is this text
+        }
+
+        var now = clock.GetUtcNow();
+        await revisions.AddAsync(note, NoteRevision.RestoreReason, now, ct);
+        note.Update(revision.Title, revision.Content, now);
+        return await TrySaveAsync(ct)
+            ? new UpdateNoteResult(UpdateNoteStatus.Updated, NoteDto.From(note))
+            : new UpdateNoteResult(UpdateNoteStatus.Conflict);
     }
 
     // ---- Trash: notes that were deleted (soft) and can still be restored ----
@@ -216,13 +266,25 @@ public sealed class NoteService(
 
     /// <summary>Deletes one note from the database for good. Only notes already in the trash.</summary>
     /// <returns>false when the note is not in the trash.</returns>
-    public async Task<bool> PurgeAsync(Guid id, CancellationToken ct) =>
+    public async Task<bool> PurgeAsync(Guid id, CancellationToken ct)
+    {
+        if (!await db.TrashedNotes.AnyAsync(n => n.Id == id, ct))
+        {
+            return false;
+        }
+
+        // The files attached to the note go first: the database cannot reach the object storage.
+        await attachments.DeleteOfNotesAsync([id], ct);
         // One DELETE statement; the database removes the note's note_tags rows (ON DELETE CASCADE).
-        await db.TrashedNotes.Where(n => n.Id == id).ExecuteDeleteAsync(ct) > 0;
+        return await db.TrashedNotes.Where(n => n.Id == id).ExecuteDeleteAsync(ct) > 0;
+    }
 
     /// <returns>How many notes were deleted for good.</returns>
-    public async Task<int> EmptyTrashAsync(CancellationToken ct) =>
-        await db.TrashedNotes.ExecuteDeleteAsync(ct);
+    public async Task<int> EmptyTrashAsync(CancellationToken ct)
+    {
+        await attachments.DeleteOfNotesAsync(await db.TrashedNotes.Select(n => n.Id).ToListAsync(ct), ct);
+        return await db.TrashedNotes.ExecuteDeleteAsync(ct);
+    }
 
     // Safety net for concurrent edits: Version is a concurrency token, so if another request
     // saved first, our UPDATE matched 0 rows and EF throws DbUpdateConcurrencyException.

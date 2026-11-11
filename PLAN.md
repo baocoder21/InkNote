@@ -106,6 +106,6 @@ Chi tiết từng phase: xem [docs/PHASES.md](docs/PHASES.md).
 1. **Khởi tạo**: repo, cấu trúc solution .NET 9 và workspace Angular, Docker Compose (PostgreSQL), CI cơ bản.
 2. **MVP**: auth, CRUD, editor + preview, tìm kiếm.
 3. **v1**: local-first sync, PWA, đính kèm, lịch sử, import/export.
-4. **Nâng cấp runtime**: chuyển từ **.NET 9 (STS)** lên **.NET 10 (LTS)** vì .NET 9 sắp hết thời hạn hỗ trợ (khoảng 11/2026).
+4. **Nâng cấp runtime**: ~~chuyển từ .NET 9 (STS) lên .NET 10 (LTS)~~ **Bỏ** (quyết định của chủ dự án, 11/2026): app chỉ dùng cá nhân, chạy trên máy mình, không đưa lên internet, nên ở lại .NET 9. Làm lại khi cần triển khai thật (xem docs/DECISIONS.md).
 5. **v2**: chia sẻ, cộng tác real-time, E2EE, plugin/theme.
 6. **Vận hành**: thêm Redis và OpenTelemetry khi cần scale, theo dõi hiệu năng và lỗi.

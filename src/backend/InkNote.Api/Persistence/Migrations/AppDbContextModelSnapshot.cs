@@ -25,6 +25,58 @@ namespace InkNote.Api.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "unaccent");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("InkNote.Api.Modules.Attachments.Domain.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("file_name");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("note_id");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_attachments");
+
+                    b.HasIndex("NoteId")
+                        .HasDatabaseName("ix_attachments_note_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_attachments_user_id");
+
+                    b.ToTable("attachments", (string)null);
+                });
+
             modelBuilder.Entity("InkNote.Api.Modules.Auth.Domain.AppUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -583,6 +635,23 @@ namespace InkNote.Api.Persistence.Migrations
                         .HasName("pk_user_tokens");
 
                     b.ToTable("user_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("InkNote.Api.Modules.Attachments.Domain.Attachment", b =>
+                {
+                    b.HasOne("InkNote.Api.Modules.Notes.Domain.Note", null)
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_notes_note_id");
+
+                    b.HasOne("InkNote.Api.Modules.Auth.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_asp_net_users_user_id");
                 });
 
             modelBuilder.Entity("InkNote.Api.Modules.Auth.Domain.RefreshToken", b =>

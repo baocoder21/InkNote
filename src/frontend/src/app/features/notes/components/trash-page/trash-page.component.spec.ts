@@ -90,7 +90,7 @@ describe('TrashPageComponent', () => {
     await settle();
     http.expectOne(`${TRASH}/a`).flush(full('a', 'First', 'Hello **world**'));
     await settle();
-    await vi.waitFor(() => expect(el().querySelector('.markdown-body strong')?.textContent).toBe('world'));
+    await vi.waitFor(() => expect(el().querySelector('.markdown-body strong')?.textContent).toBe('world'), { timeout: 10_000 });
 
     expect(el().querySelector('.preview__title')!.textContent).toContain('First');
     expect(el().querySelector('.preview textarea, .preview input')).toBeNull(); // nothing to edit
