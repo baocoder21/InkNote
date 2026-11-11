@@ -83,12 +83,9 @@
   background: var(--ink-bg);
   overflow: hidden;
 
+  // Editor | divider (8px, drawn by app-split-divider) | preview. --split-left is set by the template.
   &--split {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  &--split &__preview {
-    border-left: 1px solid var(--ink-border);
+    grid-template-columns: minmax(0, var(--split-left, 50%)) 8px minmax(0, 1fr);
   }
 }
 

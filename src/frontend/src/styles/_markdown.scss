@@ -86,6 +86,12 @@
   td {
     padding: 0.4rem 0.8rem;
     border: 1px solid var(--ink-border-strong);
+    // Cell text always starts at the left, whatever the alignment row of the Markdown table says (:---: or ---:).
+    // !important: the alignment is written on the cell itself as an attribute or a style.
+    text-align: left !important;
+    // "anywhere" (set on the whole preview) lets a table squeeze every column down to one letter ("Mod/el"); "break-word"
+    // only breaks a word that does not fit in its column by itself.
+    overflow-wrap: break-word;
   }
 
   th {

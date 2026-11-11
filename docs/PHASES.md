@@ -165,6 +165,7 @@ Chia sẻ note bằng link công khai · cộng tác real-time với Yjs · mã 
 
 ---
 
+
 ## Ghi chú về thứ tự
 
 - Phase 3 (editor) làm trước auth để bạn có niềm vui sớm với phần cốt lõi của app.

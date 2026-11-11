@@ -30,6 +30,8 @@ import { OrganizationStore } from '../../store/organization.store';
 import { MarkdownEditorComponent } from '../markdown-editor/markdown-editor.component';
 import { MarkdownPreviewComponent } from '../markdown-preview/markdown-preview.component';
 import { NoteOrganizationComponent } from '../note-organization/note-organization.component';
+import { SplitDividerComponent } from '../split-divider/split-divider.component';
+import { loadSplitRatio, saveSplitRatio } from '../split-divider/split-ratio';
 
 /**
  * Save to the database of this device this long (ms) after the user stops typing. A local save costs a few
@@ -55,6 +57,7 @@ type ViewMode = 'edit' | 'split' | 'preview';
     MarkdownEditorComponent,
     MarkdownPreviewComponent,
     NoteOrganizationComponent,
+    SplitDividerComponent,
   ],
   templateUrl: './note-editor.component.html',
   styleUrl: './note-editor.component.scss',
@@ -120,6 +123,12 @@ export class NoteEditorComponent {
   });
 
   protected readonly viewMode = signal<ViewMode>('split');
+  /** The width of the editor in Split mode, as a share of the whole (0.5 = half). The user's choice is remembered in the browser. */
+  protected readonly splitRatio = signal(loadSplitRatio());
+
+  protected rememberSplit(ratio: number): void {
+    saveSplitRatio(ratio);
+  }
   protected readonly viewOptions = [
     { label: 'Edit', value: 'edit' },
     { label: 'Split', value: 'split' },

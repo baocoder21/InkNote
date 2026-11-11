@@ -293,3 +293,67 @@ describe('NoteEditorComponent autosave', () => {
     expect(await t.ops()).toMatchObject([{ data: { title: 'AB' } }]); // one save, not two
   });
 });
+
+describe('NoteEditorComponent split divider', () => {
+  afterEach(() => {
+    localStorage.clear();
+    TestBed.inject(LocalDbService).wipe();
+  });
+
+  const panes = (el: () => HTMLElement) => el().querySelector<HTMLElement>('.panes')!;
+  const left = (el: () => HTMLElement) => panes(el).style.getPropertyValue('--split-left');
+  const divider = (el: () => HTMLElement) => el().querySelector<HTMLElement>('app-split-divider');
+
+  it('shows a divider between the editor and the preview in Split mode, half and half at first', async () => {
+    const { el } = await setup(NEVER);
+
+    expect(divider(el)).not.toBeNull();
+    expect(left(el)).toBe('50%');
+  });
+
+  it('has no divider in Edit or Preview mode (there is only one pane)', async () => {
+    const { fixture, el, settle } = await setup(NEVER);
+
+    fixture.componentInstance['viewMode'].set('edit');
+    await settle();
+    expect(divider(el)).toBeNull();
+
+    fixture.componentInstance['viewMode'].set('preview');
+    await settle();
+    expect(divider(el)).toBeNull();
+
+    fixture.componentInstance['viewMode'].set('split');
+    await settle();
+    expect(divider(el)).not.toBeNull();
+  });
+
+  it('moving the divider changes the width of the editor and is remembered for the next time', async () => {
+    const { el, settle } = await setup(NEVER);
+
+    divider(el)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true, cancelable: true }));
+    await settle();
+
+    expect(left(el)).toBe('40%');
+    expect(localStorage.getItem('inknote.splitRatio')).toBe('0.4');
+  });
+
+  it('starts from the width the user chose last time', async () => {
+    localStorage.setItem('inknote.splitRatio', '0.35');
+
+    const { el } = await setup(NEVER);
+
+    expect(left(el)).toBe('35%');
+  });
+
+  it('a double click on the divider goes back to half and half', async () => {
+    localStorage.setItem('inknote.splitRatio', '0.7');
+    const { el, settle } = await setup(NEVER);
+    expect(left(el)).toBe('70%');
+
+    divider(el)!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await settle();
+
+    expect(left(el)).toBe('50%');
+    expect(localStorage.getItem('inknote.splitRatio')).toBe('0.5');
+  });
+});

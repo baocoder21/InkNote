@@ -48,7 +48,8 @@
       />
     }
 
-    <div class="panes" [class.panes--split]="viewMode() === 'split'">
+    <!-- --split-left = the share of the width of the editor in Split mode (the grid in the stylesheet reads it). -->
+    <div class="panes" [class.panes--split]="viewMode() === 'split'" [style.--split-left]="splitRatio() * 100 + '%'">
       <!-- Kept alive (only hidden) in Preview mode so the cursor, scroll and undo history survive. -->
       <app-markdown-editor
         class="panes__editor"
@@ -56,6 +57,9 @@
         [(value)]="content"
         (filesAdded)="addFiles($event)"
       />
+      @if (viewMode() === 'split') {
+        <app-split-divider [(ratio)]="splitRatio" (committed)="rememberSplit($event)" />
+      }
       @if (viewMode() !== 'edit') {
         <app-markdown-preview class="panes__preview" [source]="content()" />
       }

@@ -797,3 +797,34 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - Test the same rule at two levels: the pure function (fast, exact) and the real browser (what a person feels).
 
 **Read next**: [CodeMirror tooltips example](https://codemirror.net/examples/tooltip/), [CodeMirror state fields](https://codemirror.net/docs/guide/#state-fields-and-effects), [Dexie transactions](https://dexie.org/docs/Tutorial/Understanding-the-basics#transactions).
+
+
+## After Phase 12 (3) - A resizable split view and left-aligned tables
+
+**Goal**: choose how wide the editor and the preview are (and keep the choice), and make table cells always start at the left.
+
+**Concepts**
+- **CSS grid with a variable.** The two panes and the divider are columns of one grid: `grid-template-columns: var(--split-left) 8px 1fr`. Angular writes the custom property from a signal (`[style.--split-left]`), so changing the signal changes the layout, with no layout code in TypeScript.
+- **Pointer events and pointer capture.** `pointerdown`/`pointermove`/`pointerup` cover mouse, pen and touch with one set of handlers. `setPointerCapture` makes the divider keep receiving the moves while the pointer is over other elements (the editor, the preview), so a fast drag does not "lose" it.
+- **A window splitter in ARIA.** `role="separator"` with `aria-valuenow/min/max` and arrow keys lets a screen reader and a keyboard user do what the mouse does. Pointer-only features exclude people; the keyboard version is a few lines.
+- **Where to remember a UI taste**: `localStorage`, read defensively. It is not data of the account, so it does not go through the sync engine.
+- **Inherited CSS and `!important`.** Markdown's `:---:` is written as an attribute or style ON each cell, which beats a normal rule of a stylesheet; `!important` is the honest tool when the rule must win over generated markup.
+
+**How to verify**
+1. Note in Split mode: drag the thin bar between the editor and the preview; release; reload the page: the width is kept. Double-click the bar: half and half. Click the bar (Tab to it) and use the left/right arrow keys (Shift = bigger steps).
+2. A table with `| :--- | :---: | ---: |` as its second line: all cell text starts at the left; short words ("Sonnet") are no longer cut into pieces.
+3. `ng test --watch=false` (826 tests), `npm run e2e` (15 tests).
+
+**Pitfalls (met while building)**
+- **Percent of what?** The left column is a percentage of the whole grid, which includes the divider; so the pointer position is converted with the width of the grid, minus half the divider so its CENTER sits under the pointer.
+- **jsdom has no layout**: the divider tests give the grid a fake width and use plain mouse events named `pointerdown...`; the real drag, the limits and the reload are tested in Chrome.
+- **`overflow-wrap: anywhere` changes the size of tables** (it lowers the minimum width of every column to one letter). `break-word` does not.
+
+**Honest limits**: the width is not shared between devices (by design); Split mode only (there is nothing to resize in Edit or Preview); alignment marks of tables are kept in the text but not shown.
+
+**Key takeaways**
+- Put the layout in CSS and give it a variable; let the signal write the number.
+- Do what the mouse does for the keyboard too, once, in the same component.
+- A visual choice of the user belongs in the browser, saved when they let go.
+
+**Read next**: [Pointer events (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events), [ARIA window splitter pattern](https://www.w3.org/WAI/ARIA/apg/patterns/windowsplitter/), [`overflow-wrap` (MDN)](https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-wrap).
