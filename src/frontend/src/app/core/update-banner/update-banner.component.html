@@ -1,0 +1,19 @@
+@if (updates.state(); as state) {
+  @if (state !== 'none') {
+    <div class="banner" role="status" aria-live="polite">
+      <span class="banner__text">
+        @if (state === 'ready') {
+          A new version of InkNote is ready.
+        } @else {
+          InkNote needs to reload to keep working.
+        }
+      </span>
+      <span class="banner__actions">
+        @if (state === 'ready') {
+          <button nz-button nzSize="small" type="button" (click)="updates.dismiss()">Later</button>
+        }
+        <button nz-button nzSize="small" nzType="primary" type="button" (click)="updates.reload()">Reload</button>
+      </span>
+    </div>
+  }
+}

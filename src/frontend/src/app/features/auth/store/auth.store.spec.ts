@@ -142,6 +142,37 @@ describe('AuthStore', () => {
       expect(localStorage.getItem('inknote.user')).not.toBeNull();
     });
 
+    it.each([
+      [500, 'Internal Server Error'],
+      [502, 'Bad Gateway'],
+      [503, 'Service Unavailable'],
+      [504, 'Gateway Timeout'], // what a service worker or a proxy makes up when the network is down
+      [429, 'Too Many Requests'],
+    ])('a %i from the refresh is "no answer", not "session refused": the user stays signed in', async (status, statusText) => {
+      const login = store.login(CREDENTIALS);
+      http.expectOne(`${AUTH_URL}/login`).flush(response());
+      await login;
+
+      const refreshed = store.refresh();
+      http.expectOne(`${AUTH_URL}/refresh`).flush({}, { status, statusText });
+
+      await expect(refreshed).rejects.toBeDefined();
+      expect(store.isSignedIn()).toBe(true);
+      expect(localStorage.getItem('inknote.session')).toBe('1');
+    });
+
+    it.each([400, 401, 403])('a %i from the refresh IS the server\'s verdict: the session ends', async (status) => {
+      const login = store.login(CREDENTIALS);
+      http.expectOne(`${AUTH_URL}/login`).flush(response());
+      await login;
+
+      const refreshed = store.refresh();
+      http.expectOne(`${AUTH_URL}/refresh`).flush({}, { status, statusText: 'No' });
+
+      expect(await refreshed).toBeNull();
+      expect(store.isSignedIn()).toBe(false);
+    });
+
     it('resolves to null and forgets the session when the server refuses', async () => {
       const login = store.login(CREDENTIALS);
       http.expectOne(`${AUTH_URL}/login`).flush(response());
@@ -215,6 +246,16 @@ describe('AuthStore', () => {
       expect(store.accessToken()).toBeNull(); // renewed later, when the network answers
       expect(localStorage.getItem('inknote.session')).toBe('1'); // the session is not forgotten
       http.expectNone(`${AUTH_URL}/refresh`); // and a network error is not retried after a pause
+    });
+
+    it('also starts as the known user when the refresh answers with a made-up 504 (a service worker offline)', async () => {
+      earlierVisit();
+      const restored = store.restoreSession();
+      http.expectOne(`${AUTH_URL}/refresh`).flush('', { status: 504, statusText: 'Gateway Timeout' });
+
+      expect(await restored).toBe(true);
+      expect(store.user()?.email).toBe('ann@example.com');
+      http.expectNone(`${AUTH_URL}/refresh`); // no retry after a pause either
     });
 
     it('cannot start offline when this browser does not know who the user is', async () => {

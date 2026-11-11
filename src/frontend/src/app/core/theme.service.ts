@@ -64,6 +64,12 @@ export class ThemeService {
   private apply(theme: ThemeName): void {
     this.document.documentElement.setAttribute('data-theme', theme);
 
+    // The title bar of the installed app takes the color of the page (see index.html, which sets it first).
+    const background = THEME_OPTIONS.find((t) => t.id === theme)?.swatch;
+    if (background) {
+      this.document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
+    }
+
     const file = theme === 'dark' ? 'dark' : 'variable';
     const current = this.document.querySelector<HTMLLinkElement>('link[data-zorro]');
     if (current?.dataset['zorro'] === file) {

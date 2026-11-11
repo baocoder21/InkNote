@@ -54,8 +54,13 @@ function cachedUser(value: AuthUser | null | undefined): AuthUser | null {
   }
 }
 
-/** The request never reached a server: no network, or the server is down. Not the same as "session refused". */
-const isNetworkError = (error: unknown) => error instanceof HttpErrorResponse && error.status === 0;
+/**
+ * The server could not give an ANSWER about the session: the request never reached it (status 0: no network),
+ * or it is down or overloaded (5xx, for example a proxy's 502/503/504; 429: too many requests). None of these says
+ * the session is over, so none may sign the user out. Only the server's own "no" (401, 400...) does.
+ */
+const isNoVerdict = (error: unknown) =>
+  error instanceof HttpErrorResponse && (error.status === 0 || error.status === 429 || error.status >= 500);
 
 export type SignInResult =
   | { status: 'ok' }
@@ -95,8 +100,8 @@ export const AuthStore = signalStore(
         accept(response);
         return response.accessToken;
       } catch (error) {
-        if (isNetworkError(error)) {
-          throw error; // the server is not reachable: that says nothing about the session, which stays
+        if (isNoVerdict(error)) {
+          throw error; // the server gave no answer about the session: it stays as it is
         }
         clear();
         return null;

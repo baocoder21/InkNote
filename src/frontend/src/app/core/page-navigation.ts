@@ -11,3 +11,9 @@ export const HARD_NAVIGATE = new InjectionToken<(url: string) => void>('HARD_NAV
   providedIn: 'root',
   factory: () => (url: string) => window.location.assign(url),
 });
+
+/** Loads the current page again (a new version of the app is picked up this way). Replaceable in tests, like the above. */
+export const RELOAD_PAGE = new InjectionToken<() => void>('RELOAD_PAGE', {
+  providedIn: 'root',
+  factory: () => () => window.location.reload(),
+});

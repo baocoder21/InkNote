@@ -1,0 +1,25 @@
+:host {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 900; // above the pages, below dialogs and menus
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.6rem 0.75rem 0.6rem 1rem;
+  border: 1px solid var(--ink-border-strong);
+  border-radius: 8px;
+  background: var(--ink-bg-elevated);
+  color: var(--ink-text);
+  font-size: 0.875rem;
+
+  &__actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.5rem;
+  }
+}

@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, InjectionToken, inject, signal } from '@angular/core';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { API_BASE_URL } from '../../core/api.config';
+import { SW_BYPASS_HEADER } from '../../core/service-worker-bypass.interceptor';
 import { AuthStore } from '../auth/store/auth.store';
 import { expiresWithin } from './jwt-expiry';
 import { SyncEngine } from './sync-engine.service';
@@ -24,7 +25,9 @@ export const HUB_FACTORY = new InjectionToken<(url: string, token: () => Promise
   providedIn: 'root',
   factory: () => (url, token) =>
     new HubConnectionBuilder()
-      .withUrl(url, { accessTokenFactory: token })
+      // The header keeps the service worker out of the negotiation and the long-polling fallback (see
+      // bypassServiceWorker). A WebSocket does not pass through the service worker at all.
+      .withUrl(url, { accessTokenFactory: token, headers: { [SW_BYPASS_HEADER]: 'true' } })
       .configureLogging(LogLevel.None) // a lost connection is normal here: the state signal says it, no console noise
       .build(),
 });

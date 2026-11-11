@@ -515,3 +515,43 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - Put cross-cutting reactions in a hook that every path goes through (interceptor, trigger) instead of calling them from each place.
 - Real-time is an optimization over polling, never a replacement: keep the slow safety net, and make every new connection do a catch-up.
 - Test the transport you claim to use, not a fallback that happens to work.
+
+## Phase 9 - PWA (install as an app, run offline)
+
+**Concepts**
+- **Service worker**: a script the browser runs in the background, between the page and the network. Every `fetch` of the page passes through it, so it can answer from a cache instead of the network. It needs HTTPS or `localhost`, and it has its own lifecycle: install (download files), wait, activate. A new version waits until the pages using the old one are reloaded.
+- **Web App Manifest** (`manifest.webmanifest`): a JSON file that says what the app is called, which icons it has, and how it opens (`display: standalone` = a window without the browser's address bar). With a valid manifest the browser offers "Install".
+- **Caching strategies**: *prefetch* = download at install time (the app shell), *lazy* = keep what was actually used. `@angular/service-worker` reads `ngsw-config.json` at build time and writes `ngsw.json` with the hash of every file; comparing that file is how it notices a new version.
+- **App cache vs data**: the service worker holds the PROGRAM (HTML, JS, CSS); the local database (Phase 7) holds the DATA. Together they make the app work with no network at all.
+- **Update flow**: new build, new `ngsw.json`, worker downloads the changed files in the background, `VERSION_READY`, the app shows "A new version is ready", the user clicks Reload.
+
+**How it fits together**
+1. First visit (online): the page loads from the network; once the app is stable the service worker registers, installs and prefetches all 259 files.
+2. Later visits: the worker answers every request for the app's files from its cache (and `index.html` for routes such as `/notes/<id>`), so reloading offline works. The app then starts from the local database and the cached user (Phase 7).
+3. Online again: the engine and the hub (Phases 7 and 8) catch up; the worker checks for a new version in the background.
+
+**How to verify**
+1. `npm run preview` in `src/frontend` (builds, then serves the production build on http://localhost:4300). Restart the API first so it accepts that origin (`appsettings.Development.json` now lists it). Open http://localhost:4300 and sign in. (The service worker does not exist under `ng serve` on :4200.)
+2. DevTools, Application, Service workers: `ngsw-worker.js` is "activated and running". Application, Manifest: name, icons and "Installability" without errors. Cache storage: `ngsw:/:...:assets:app:cache` holds about 259 entries.
+3. Install: the icon at the right of the address bar (or the browser menu, "Install InkNote"). The installed window has no address bar.
+4. Offline: DevTools, Network, "Offline" (or Application, Service workers, "Offline"), then reload the page (also on `/notes/<id>`): the app opens, your notes are there, you can edit; the status line says "Offline". Try a Mermaid block and `$x^2$` too. Switch the theme. Go back online: the changes are sent.
+5. Update: stop the preview server, change something small (for example the text of a button), run `npm run preview` again, then switch to the already open tab and back (or wait): "A new version of InkNote is ready" appears. "Later" hides it, "Reload" loads the new version.
+6. Lighthouse in recent Chrome versions no longer has a PWA score; use the Application panel (Manifest, Installability) as above.
+7. `ng test --watch=false` (413 tests), `dotnet test --configuration Release` (256 tests).
+
+**If you see old code while testing**: the service worker is doing its job (serving the cached version). DevTools, Application, Service workers: tick "Update on reload", or "Unregister", and Application, Storage, "Clear site data".
+
+**Pitfalls (met while building)**
+- **A service worker turns a lost connection into a fake `504`** for every request it does not handle, including API calls to another origin. The app saw "server error" instead of "offline", and a failed token refresh looked like a refused session (a user starting the app offline would be signed out). Fix: the `ngsw-bypass` header on API requests, and treating 5xx/429 as "no answer about the session". This could only be found in a real browser with the production build: unit tests and `ng serve` have no service worker.
+- A static server that redirects `/index.html` to `/` (a common default of "clean URLs") makes the service worker refuse to install: its prefetch refuses redirected responses.
+- `index.html`, `ngsw.json` and `ngsw-worker.js` must be sent with `no-cache`; hashed files can be cached for a year. Otherwise a new version is never noticed.
+- Chrome refuses to install from an incognito profile (`in-incognito`): that is also what an automated test browser looks like.
+- A test tool that routes only HTTP does not see requests made BY the service worker: they go to the real address (here, a CORS failure turned into a 504).
+- Changing a cached file without changing `ngsw.json` makes the worker report a broken state (hash mismatch): always publish the files and `ngsw.json` from the same build.
+
+**Honest limits**: the very first visit needs the network (to install the worker); search and the trash need the server; a deployed app needs HTTPS (only `localhost` is exempt); the cache is about 9 MB (a few MB over the wire); the manifest's `theme-color` cannot follow the theme (the `<meta>` tag does); no in-app "Install" button yet (the browser's own works); the service worker is only active in the production build.
+
+**Key takeaways**
+- Offline needs two things: the program (service worker) and the data (local database). Keep their strategies separate.
+- A new layer between two others (here the service worker between the page and the network) can change what the lower one reports. Test with the layer present, in the real thing.
+- Never swap a running program under a user: download in the background, tell them, let them choose when to reload.

@@ -5,7 +5,13 @@
   <title>InkNote</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <meta name="description" content="InkNote: a local-first Markdown note-taking app that works offline.">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="icon" type="image/x-icon" sizes="48x48" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- Makes the app installable. The color is the title bar of the installed window: the script below sets it per theme. -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#2e3440">
   <!--
     Applies the saved theme BEFORE the app starts, so the page never flashes the wrong colors.
     It sets <html data-theme="..."> (our design tokens) and loads the matching ng-zorro stylesheet
@@ -25,6 +31,9 @@
       }
       var file = theme === 'dark' ? 'dark' : 'variable';
       document.documentElement.setAttribute('data-theme', theme);
+      // Title bar color of the installed app = the theme's background (same colors as THEME_OPTIONS in theme.service.ts).
+      var bar = { light: '#edeeec', dark: '#2e3440', warm: '#f1e9d2' }[theme];
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
       var link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = 'themes/ng-zorro-antd.' + file + '.min.css';

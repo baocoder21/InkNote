@@ -23,6 +23,44 @@ describe('ThemeService', () => {
     expect(THEME_OPTIONS.map((t) => t.label)).toEqual(['Light', 'Dark', 'Warm']);
   });
 
+  describe('the color of the installed app\'s title bar (<meta name="theme-color">)', () => {
+    const meta = () => document.querySelector('meta[name="theme-color"]');
+
+    beforeEach(() => {
+      const tag = document.createElement('meta');
+      tag.name = 'theme-color';
+      tag.content = '#000000';
+      document.head.appendChild(tag);
+    });
+
+    afterEach(() => meta()?.remove());
+
+    it('is the background of the theme: set at start and changed with every switch', () => {
+      const service = create();
+      expect(meta()!.getAttribute('content')).toBe('#2e3440'); // dark, the default
+
+      service.set('light');
+      expect(meta()!.getAttribute('content')).toBe('#edeeec');
+      service.set('warm');
+      expect(meta()!.getAttribute('content')).toBe('#f1e9d2');
+    });
+
+    it('is the same color as the theme\'s swatch (one list of colors for the picker and the title bar)', () => {
+      const service = create();
+
+      for (const theme of THEME_OPTIONS) {
+        service.set(theme.id);
+        expect(meta()!.getAttribute('content')).toBe(theme.swatch);
+      }
+    });
+
+    it('does nothing when the page has no such tag (tests, or a page without a manifest)', () => {
+      meta()!.remove();
+
+      expect(() => create().set('warm')).not.toThrow();
+    });
+  });
+
   it('starts with the dark theme when nothing was saved, and puts it on <html>', () => {
     const service = create();
 
