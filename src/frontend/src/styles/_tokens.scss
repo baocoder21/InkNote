@@ -10,7 +10,7 @@
 // three blocks.
 //
 // Groups:
-//   --ink-bg*, --ink-border*, --ink-text*, --ink-bg-hover/-selected, --ink-accent, --ink-danger
+//   --ink-bg*, --ink-border*, --ink-text*, --ink-title, --ink-editor-text, --ink-bg-hover/-selected, --ink-accent, --ink-danger
 //   --ink-heading, --ink-link            : preview
 //   --ink-syn-*                          : colors of the editor's Markdown syntax and of code
 
@@ -28,6 +28,8 @@
   --ink-border-strong: #4c566a;
 
   --ink-text: #d8dee9;
+  --ink-title: #d8dee9; // the app name and the title of the open note
+  --ink-editor-text: #d8dee9; // plain paragraphs in the editor (lists, tables and code keep --ink-text)
   --ink-text-muted: #98a3b8;
   // The ONE color of the rendered preview (the editor is the colorful side). Black would vanish on
   // this background, so the dark theme uses its normal light text.
@@ -83,6 +85,8 @@
   --ink-border-strong: #c9bd98;
 
   --ink-text: #4d699b;
+  --ink-title: #4d699b;
+  --ink-editor-text: #4d699b;
   --ink-text-muted: #655f84;
   --ink-preview-text: #26231d; // near-black, warm
   --ink-bg-mark: rgba(214, 140, 20, 0.32);
@@ -134,6 +138,8 @@
   --ink-border-strong: #bcbeba;
 
   --ink-text: #dc347f;
+  --ink-title: #1c1f23; // black: only the Markdown marks and the text next to them are pink
+  --ink-editor-text: #1c1f23;
   --ink-text-muted: #62666d;
   --ink-preview-text: #1c1f23; // near-black
   --ink-bg-mark: rgba(255, 196, 0, 0.4);

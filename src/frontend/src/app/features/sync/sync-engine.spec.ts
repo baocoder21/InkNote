@@ -151,6 +151,70 @@ describe('SyncEngine', () => {
       expect(await local.db.outbox.count()).toBe(0);
     });
 
+    it('a change made at ANY moment of a run is never lost: it travels with the batch or waits behind it, and the server ends up with it', async () => {
+      // The race this guards: the engine used to read the queue and only THEN mark what it would send as "sent". A change
+      // made in between was merged into an operation whose data had already been read, so it never reached the server, and
+      // the server's answer then put the old value back over the local one (a note dragged into a folder jumped back out).
+      // The moment is a matter of a few milliseconds, so many moments are tried, against a tiny fake server.
+      const server = new Map<string, Note>();
+      const serveUntil = async (finished: Promise<void>) => {
+        let over = false;
+        void finished.then(() => (over = true));
+        while (!over) {
+          for (const req of http.match((r) => r.url.endsWith('/api/sync/push'))) {
+            const results = operationsOf(req).map((op) => {
+              const current = server.get(op['id'] as string) ?? serverNote({ id: op['id'] as string, version: 0 });
+              const next = { ...current, ...(op['data'] as object), version: current.version + 1 } as Note;
+              server.set(next.id, next);
+              return { opId: op['opId'], status: 'applied', entity: next, error: null };
+            });
+            req.flush({ results });
+          }
+          for (const req of http.match((r) => r.url.endsWith('/api/sync/pull'))) req.flush(emptyPull());
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      };
+
+      for (let moment = 0; moment < 40; moment++) {
+        const note = await notes.create(`Note ${moment}`, 'text', null);
+        const done = engine.syncNow();
+        for (let i = 0; i < moment; i++) await Promise.resolve(); // a different moment each time...
+        for (let i = 0; i < moment % 4; i++) await new Promise((resolve) => setTimeout(resolve, 0)); // ...at every kind of distance
+        await notes.updateOrganization(note.id, { notebookId: `folder-${moment}`, isPinned: false, status: 'None', tagIds: [] });
+        await serveUntil(done);
+        await serveUntil(engine.syncNow()); // a change that had to wait is sent by the next run
+
+        expect((await local.db.notes.get(note.id))!.notebookId, `moment ${moment}: local`).toBe(`folder-${moment}`);
+        expect(server.get(note.id)!.notebookId, `moment ${moment}: server`).toBe(`folder-${moment}`);
+        expect(await local.db.outbox.count(), `moment ${moment}: nothing left to send`).toBe(0);
+      }
+    });
+
+    it('sends the notebooks and tags BEFORE the notes that point to them, even when the note\'s operation is older', async () => {
+      // The note has an operation waiting from before; the folder is created after it; moving the note into the folder is
+      // merged into that OLDER operation. By queue order the note would reach the server before its folder exists, and the
+      // server (which drops a notebook it does not know) would answer "no folder", which then overwrote the local choice.
+      const note = await notes.create('Draft', 'text', null); // operation 1: the note
+      const folder = await org.createNotebook('Docs', null); // operation 2: the folder
+      await notes.updateOrganization(note.id, { notebookId: folder.id, isPinned: false, status: 'None', tagIds: [] }); // merged into 1
+
+      const known = new Set<string>();
+      const done = engine.syncNow();
+      const push = await nextPush();
+      const results = operationsOf(push).map((op) => {
+        if (op['entity'] === 'notebook') known.add(op['id'] as string);
+        const data = { ...(op['data'] as Record<string, unknown>) };
+        if (op['entity'] === 'note' && !known.has(data['notebookId'] as string)) data['notebookId'] = null; // what the server does
+        return { opId: op['opId'], status: 'applied', error: null, entity: op['entity'] === 'note' ? serverNote({ id: note.id, title: 'Draft', content: 'text', version: 1, notebookId: (data['notebookId'] as string | null) ?? null }) : null };
+      });
+      push.flush({ results });
+      (await nextPull()).flush(emptyPull());
+      await done;
+
+      expect(operationsOf(push).map((o) => o['entity'])).toEqual(['notebook', 'note']);
+      expect((await local.db.notes.get(note.id))!.notebookId).toBe(folder.id); // the note kept its folder
+    });
+
     it('an answer never overwrites text typed after the operation was sent', async () => {
       const note = await notes.create('Draft', 'one', null);
       const done = engine.syncNow();

@@ -29,7 +29,8 @@ test('everything exported can be imported again into another account', async ({ 
   const other = await newDevice(browser);
   await register(other.page);
   await other.page.goto('/notes/transfer');
-  await other.page.setInputFiles('input[type=file]', file);
+  // The page's own picker: the sidebar has a hidden one too (for "Import into this folder").
+  await other.page.setInputFiles('app-transfer-page input[type=file]', file);
   await expect(other.page.locator('app-transfer-page')).toContainText('Imported 2 notes', { timeout: 30_000 });
   await settled(other.page);
 
@@ -49,7 +50,7 @@ test('a file that cannot be imported is listed with its reason, and nothing else
   const good = testInfo.outputPath('Good note.md');
   writeFileSync(good, '# Good note\n\nhello\n');
 
-  await page.setInputFiles('input[type=file]', [bad, good]);
+  await page.setInputFiles('app-transfer-page input[type=file]', [bad, good]);
 
   const report = page.locator('app-transfer-page');
   await expect(report).toContainText('Imported 1 note.', { timeout: 30_000 });

@@ -3,11 +3,14 @@ import {
   Component,
   computed,
   effect,
+  ElementRef,
   InjectionToken,
   inject,
   input,
   signal,
+  TemplateRef,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
@@ -31,9 +34,10 @@ import { SyncStatusComponent } from '../../../sync/components/sync-status/sync-s
 import { LocalSession } from '../../../sync/local-session.service';
 import { downloadBlob } from '../../../transfer/download';
 import { ExportService } from '../../../transfer/export.service';
+import { ImportService } from '../../../transfer/import.service';
 import { SyncEngine } from '../../../sync/sync-engine.service';
 import { TrashStore } from '../../store/trash.store';
-import { ExplorerTreeComponent } from '../explorer-tree/explorer-tree.component';
+import { ExplorerTreeComponent, NoteMove } from '../explorer-tree/explorer-tree.component';
 import { NameDialogComponent, NameDialogData } from '../name-dialog/name-dialog.component';
 import { SearchBoxComponent } from '../search-box/search-box.component';
 import { SearchResultsComponent } from '../search-results/search-results.component';
@@ -88,6 +92,7 @@ export class NotesSidebarComponent {
   protected readonly sync = inject(SyncEngine);
   private readonly session = inject(LocalSession);
   private readonly exporter = inject(ExportService);
+  private readonly importer = inject(ImportService);
   protected readonly theme = inject(ThemeService);
   protected readonly themes = THEME_OPTIONS;
   private readonly router = inject(Router);
@@ -125,9 +130,16 @@ export class NotesSidebarComponent {
     { equal: (a, b) => a?.id === b?.id && a?.notebookId === b?.notebookId },
   );
   private readonly hasNotebooks = computed(() => this.org.notebooks().length > 0);
+  private lastFollowedNote: string | null = null; // the note (and its folder) the current folder last followed
 
   // The target of the tag menu (same idea as the tree's shared menu).
   protected readonly menuTag = signal<Tag | null>(null);
+
+  // "Import into this folder": the hidden file picker, the folder it was opened for, and what the last import left out.
+  private readonly folderImportInput = viewChild.required<ElementRef<HTMLInputElement>>('folderImport');
+  private readonly leftOutTemplate = viewChild.required<TemplateRef<unknown>>('leftOutTpl');
+  private importTarget: Notebook | null = null;
+  protected readonly leftOut = signal<{ name: string; reason: string }[]>([]);
 
   // What the empty list says. "Empty" can also mean "not downloaded yet" (a new device, or a new sign-in).
   protected readonly emptyText = computed(() => {
@@ -188,7 +200,13 @@ export class NotesSidebarComponent {
         return;
       }
       untracked(() => {
-        this.currentFolderId.set(open.notebookId);
+        // The current folder follows the OPEN NOTE, not the folders: when this runs again only because the first folder
+        // was created (hasNotebooks changed), the folder the user just made must stay the current one.
+        const key = `${open.id}/${open.notebookId}`;
+        if (key !== this.lastFollowedNote) {
+          this.lastFollowedNote = key;
+          this.currentFolderId.set(open.notebookId);
+        }
         if (open.notebookId && ready) {
           this.reveal(open.notebookId);
         }
@@ -254,6 +272,21 @@ export class NotesSidebarComponent {
     await this.router.navigate(['/notes', note.id]);
   }
 
+  /**
+   * Nothing is selected any more: new notes and folders go to the top level. The same rule as the file explorer of VS Code:
+   * the target is the folder you clicked (or the folder of the note you opened), and the empty space means "the root".
+   */
+  protected clearCurrentFolder(): void {
+    this.currentFolderId.set(null);
+  }
+
+  /** Only a click on the area itself (its side margins), not one that bubbled up from a row or the search results. */
+  protected onTreeAreaClick(event: MouseEvent): void {
+    if (event.target === event.currentTarget) {
+      this.clearCurrentFolder();
+    }
+  }
+
   protected async newNoteIn(folder: Notebook): Promise<void> {
     this.currentFolderId.set(folder.id);
     await this.newNote();
@@ -298,6 +331,32 @@ export class NotesSidebarComponent {
     } catch {
       this.message.error('The export failed.');
     }
+  }
+
+  /**
+   * A note was dragged onto a folder (or onto the top level). Same write as the notebook picker in the editor: pin,
+   * status and tags are kept, only the notebook changes. The target folder opens so the note is seen arriving.
+   */
+  protected async moveNote(move: NoteMove): Promise<void> {
+    const note = this.store.notes().find((n) => n.id === move.noteId);
+    if (!note) {
+      return;
+    }
+    const result = await this.store.updateOrganization(note.id, {
+      notebookId: move.notebookId,
+      isPinned: note.isPinned,
+      status: note.status,
+      tagIds: note.tagIds,
+    });
+    if (result !== 'ok') {
+      this.message.error(result === 'not-found' ? 'This note no longer exists.' : 'Cannot move the note');
+      return;
+    }
+    const target = move.notebookId ? this.org.notebooks().find((n) => n.id === move.notebookId) : null;
+    if (move.notebookId) {
+      this.reveal(move.notebookId);
+    }
+    this.message.success(target ? `Moved "${note.title}" to "${target.name}"` : `Moved "${note.title}" to the top level`, { nzDuration: 1500 });
   }
 
   protected confirmDeleteNote(note: NoteSummary): void {
@@ -369,6 +428,64 @@ export class NotesSidebarComponent {
     const result = await this.org.renameNotebook(folder.id, name);
     if (result !== 'ok') {
       this.message.error(result === 'not-found' ? 'This folder no longer exists' : 'Cannot rename the folder');
+    }
+  }
+
+  /** Saves a folder, with its sub-folders and all their notes, as a zip. */
+  protected async exportFolder(folder: Notebook): Promise<void> {
+    try {
+      const result = await this.exporter.exportNotebook(folder.id);
+      if (!result) {
+        this.message.warning('This folder no longer exists.');
+        return;
+      }
+      downloadBlob(result.blob, result.fileName);
+      this.message.success(`Exported "${folder.name}": ${result.notes} ${result.notes === 1 ? 'note' : 'notes'}`, { nzDuration: 2000 });
+      if (result.missingAttachments > 0) {
+        this.message.warning('Some files of these notes are not on this device and could not be included (are you offline?).');
+      }
+    } catch {
+      this.message.error('The export failed.');
+    }
+  }
+
+  /** Opens the file picker; what is chosen is imported into this folder (see importPicked). */
+  protected importIntoFolder(folder: Notebook): void {
+    this.importTarget = folder;
+    this.folderImportInput().nativeElement.click();
+  }
+
+  protected async importPicked(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = ''; // so that the same file can be chosen again
+    const target = this.importTarget;
+    this.importTarget = null;
+    if (!target || files.length === 0) {
+      return;
+    }
+
+    const busy = this.message.loading('Importing…', { nzDuration: 0 });
+    try {
+      const report = await this.importer.importFiles(files, undefined, target.id);
+      this.reveal(target.id);
+      if (report.notes > 0) {
+        this.message.success(`Imported ${report.notes} ${report.notes === 1 ? 'note' : 'notes'} into "${target.name}"`, { nzDuration: 2500 });
+      } else {
+        this.message.warning('No notes were imported.');
+      }
+      if (report.skipped.length > 0) {
+        this.leftOut.set(report.skipped);
+        this.modal.warning({
+          nzTitle: `Left out (${report.skipped.length})`,
+          nzContent: this.leftOutTemplate(),
+          nzOkText: 'OK',
+        });
+      }
+    } catch {
+      this.message.error('The import failed. Some notes may have been added before the problem.');
+    } finally {
+      this.message.remove(busy.messageId);
     }
   }
 

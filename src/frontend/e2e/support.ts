@@ -87,3 +87,22 @@ export async function pastePicture(page: Page, name: string): Promise<void> {
     { name, b64: PNG.toString('base64') },
   );
 }
+
+/** The sidebar row of a folder or a note, found by its (exact) name. */
+export const rowOf = (page: Page, name: string) =>
+  page.locator('app-explorer-tree .row').filter({ has: page.locator('.row__name', { hasText: new RegExp(`^${name}$`) }) });
+
+/**
+ * Creates a folder from the toolbar. NOTE: it is made inside the CURRENT folder (the last one clicked, or the folder of the
+ * open note), so create the folder when no folder is current if it must be at the top.
+ */
+export async function newFolder(page: Page, name: string): Promise<void> {
+  await page.click('button[aria-label="New folder"]');
+  await page.fill('app-name-dialog input', name);
+  await page.keyboard.press('Enter');
+  await expect(rowOf(page, name)).toBeVisible();
+}
+
+/** The indentation of a row in rem (0.5 = top level, 1.5 = inside a top-level folder): where a note is in the tree. */
+export const indentOf = async (page: Page, name: string): Promise<number> =>
+  parseFloat(((await rowOf(page, name).getAttribute('style')) ?? '').match(/padding-left:\s*([\d.]+)rem/)?.[1] ?? 'NaN');

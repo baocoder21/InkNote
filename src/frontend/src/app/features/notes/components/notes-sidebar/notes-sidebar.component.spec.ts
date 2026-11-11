@@ -295,6 +295,152 @@ describe('NotesSidebarComponent', () => {
     await vi.waitFor(() => expect(saved).toEqual([{ href: 'blob:fake', download: 'Plan.md' }]));
   });
 
+  describe('moving notes by dragging, and import / export of one folder', () => {
+    const transfer = { setData: () => undefined, effectAllowed: '', dropEffect: '' };
+    function drag(type: string, target: Element): Event {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: transfer });
+      Object.defineProperty(event, 'relatedTarget', { value: null });
+      target.dispatchEvent(event);
+      return event;
+    }
+    const dragNote = async (note: string, onto: Element) => {
+      drag('dragstart', row(note));
+      drag('dragover', onto);
+      drag('drop', onto);
+      await settle();
+    };
+    async function choose(rowName: string, label: string) {
+      row(rowName).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+      await settle();
+      await sleep(20);
+      Array.from(document.querySelectorAll<HTMLElement>('.cdk-overlay-container li[nz-menu-item]'))
+        .find((i) => i.textContent!.includes(label))!
+        .click();
+    }
+
+    it('dropping a note on a folder moves it there: only the notebook changes, and the folder opens', async () => {
+      await dragNote('Loose', row('Work')); // Loose is Active, tagged "urgent"
+
+      await vi.waitFor(async () => expect(await ops()).toHaveLength(1));
+      expect(await ops()).toMatchObject([{ entity: 'note', id: 'n3', kind: 'upsert', data: { notebookId: 'w' } }]);
+      expect(await local.db.notes.get('n3')).toMatchObject({ notebookId: 'w', status: 'Active', tagIds: ['t2'], isPinned: false }); // the rest is kept
+      await vi.waitFor(() => expect(rowNames()).toEqual(['[F] Work', '[F] Projects', '[N] Loose', '[N] Plan']));
+    });
+
+    it('dropping a note on the empty space of the tree takes it out of its folder', async () => {
+      row('Work').click(); // open Work, so that Plan is visible
+      await settle();
+
+      await dragNote('Plan', el().querySelector('app-explorer-tree')!);
+
+      await vi.waitFor(async () => expect(await ops()).toHaveLength(1));
+      expect(await ops()).toMatchObject([{ entity: 'note', id: 'n1', kind: 'upsert', data: { notebookId: null } }]);
+      await vi.waitFor(() => expect(rowNames()).toEqual(['[F] Work', '[F] Projects', '[N] Loose', '[N] Plan']));
+    });
+
+    it('"Export this folder" saves the folder with what is inside as a zip named after it', async () => {
+      const saved: { href: string; download: string }[] = [];
+      URL.createObjectURL = vi.fn(() => 'blob:fake');
+      URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        saved.push({ href: this.href, download: this.download });
+      });
+
+      await choose('Work', 'Export this folder');
+
+      await vi.waitFor(() => expect(saved).toEqual([{ href: 'blob:fake', download: 'Work.zip' }]));
+    });
+
+    it('"Import into this folder" opens the file picker, and what is chosen lands in THAT folder', async () => {
+      const picker = el().querySelector<HTMLInputElement>('input.hidden-input')!;
+      const opened = vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+
+      await choose('Work', 'Import into this folder');
+      expect(opened).toHaveBeenCalledOnce();
+
+      Object.defineProperty(picker, 'files', { value: [new File(['# Imported\n\nhello'], 'imported.md')], configurable: true });
+      picker.dispatchEvent(new Event('change'));
+
+      await vi.waitFor(async () => expect((await local.db.notes.toArray()).find((n) => n.title === 'Imported')?.notebookId).toBe('w'));
+    });
+
+    it('lists what an import could not take, in a dialog', async () => {
+      const picker = el().querySelector<HTMLInputElement>('input.hidden-input')!;
+      vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+      await choose('Work', 'Import into this folder');
+
+      Object.defineProperty(picker, 'files', { value: [new File(['x'], 'report.docx')], configurable: true });
+      picker.dispatchEvent(new Event('change'));
+
+      await vi.waitFor(() => expect(document.querySelector('.ant-modal-body')?.textContent).toContain('report.docx'));
+      expect(document.querySelector('.ant-modal-body')!.textContent).toContain('only .md, .markdown, .txt and .zip files can be imported');
+    });
+
+    it('does nothing when the file picker is closed without a choice', async () => {
+      const picker = el().querySelector<HTMLInputElement>('input.hidden-input')!;
+      vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+      await choose('Work', 'Import into this folder');
+
+      Object.defineProperty(picker, 'files', { value: [], configurable: true });
+      picker.dispatchEvent(new Event('change'));
+      await settle();
+
+      expect(await local.db.notes.count()).toBe(3);
+    });
+  });
+
+  describe('where a new note or folder goes (like the explorer of VS Code)', () => {
+    const newNoteRows = async () => (await local.db.notes.toArray()).filter((n) => !['n1', 'n2', 'n3'].includes(n.id));
+
+    it('goes into the folder that was clicked, and says so on the button', async () => {
+      row('Work').click();
+      await settle();
+
+      expect(el().querySelector('button[aria-label="New note"]')!.getAttribute('title')).toBe('New note in Work');
+      await clickTool('New note');
+
+      await vi.waitFor(async () => expect(await newNoteRows()).toHaveLength(1));
+      expect((await newNoteRows())[0].notebookId).toBe('w');
+    });
+
+    it('goes to the TOP LEVEL after a click on the empty space of the tree', async () => {
+      row('Work').click();
+      await settle();
+
+      el().querySelector<HTMLElement>('app-explorer-tree')!.click(); // the empty space
+      await settle();
+      expect(el().querySelector('button[aria-label="New note"]')!.getAttribute('title')).toBe('New note');
+      expect(el().querySelector('button[aria-label="New folder"]')!.getAttribute('title')).toBe('New folder');
+      await clickTool('New note');
+
+      await vi.waitFor(async () => expect(await newNoteRows()).toHaveLength(1));
+      expect((await newNoteRows())[0].notebookId).toBeNull();
+    });
+
+    it('a new FOLDER goes to the top level too after a click on the empty space', async () => {
+      row('Work').click();
+      await settle();
+      el().querySelector<HTMLElement>('app-explorer-tree')!.click();
+      await settle();
+
+      await clickTool('New folder');
+      await fillDialog('Elsewhere');
+
+      await vi.waitFor(async () => expect((await local.db.notebooks.toArray()).find((n) => n.name === 'Elsewhere')?.parentId).toBeNull());
+    });
+
+    it('a click on the margin of the tree area counts as empty space; a click inside the search results does not', async () => {
+      row('Work').click();
+      await settle();
+
+      el().querySelector<HTMLElement>('.tree-area')!.click();
+      await settle();
+
+      expect(el().querySelector('button[aria-label="New note"]')!.getAttribute('title')).toBe('New note');
+    });
+  });
+
   it('each note row shows its status and its tag names (looked up from the tag list)', () => {
     const chips = (selector: string) =>
       Array.from(row('Loose').querySelectorAll(selector)).map((e) => e.textContent!.trim());

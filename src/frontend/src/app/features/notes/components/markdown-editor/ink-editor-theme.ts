@@ -12,7 +12,9 @@ import { liveMarkdownStyle } from './markdown-live-style';
 const layout = EditorView.theme({
   '&': {
     height: '100%',
-    color: 'var(--ink-text)',
+    // Plain paragraphs. Lines with Markdown marks keep --ink-text (list items, tables, code: see markdown-live-style.ts);
+    // headings, quotes and inline formatting have their own colors.
+    color: 'var(--ink-editor-text)',
     backgroundColor: 'var(--ink-bg)',
   },
   '.cm-scroller': {

@@ -258,15 +258,19 @@ export class SyncEngine {
     for (;;) {
       if (!this.local.isOpen) return;
       const db = this.local.db;
-      const batch = await this.nextBatch(db);
+      // Pick the batch AND freeze it in ONE transaction, BEFORE the network is touched: from now on the server may have seen
+      // these operations (see OutboxOp.attempted). Two separate steps left a gap: a change made in between (a drag into a
+      // folder, a rename) was merged into an operation whose data had already been read, so it was never sent, and the
+      // server's answer then overwrote the local value with the old one. In one transaction a change made meanwhile waits for
+      // it to end, finds the operation frozen, and queues behind it as a new operation.
+      const batch = await db.transaction('rw', db.outbox, async () => {
+        const next = await this.nextBatch(db);
+        for (const op of next) await db.outbox.update(op.seq!, { attempted: true });
+        return next;
+      });
       if (batch.length === 0) {
         return;
       }
-
-      // Freeze them BEFORE the network is touched: from now on the server may have seen them (see OutboxOp.attempted).
-      await db.transaction('rw', db.outbox, async () => {
-        for (const op of batch) await db.outbox.update(op.seq!, { attempted: true });
-      });
 
       const response = await firstValueFrom(this.api.push(batch.map(toWire)));
       const answered = await this.applyResults(db, batch, response.results);
@@ -277,20 +281,26 @@ export class SyncEngine {
     }
   }
 
-  /** The next operations to send: in order, one per thing, none that wait for an answer still to come. */
+  /**
+   * The next operations to send: in the order they were made, one per thing, none that wait for an answer still to come,
+   * EXCEPT that notebooks and tags that are created or changed go first. A note may point to them (its folder, its tags),
+   * and the server drops a reference to something it does not know yet. Queue order alone does not guarantee that: an edit
+   * of a note is merged into the note's OLDER waiting operation, which can sit before the creation of the folder the note
+   * was just moved into. (Deletions keep their place: moving a note out of a folder must still come before deleting it.)
+   */
   private async nextBatch(db: LocalDb): Promise<OutboxOp[]> {
     const all = await db.outbox.orderBy('seq').toArray();
     const seen = new Set<string>();
-    const batch: OutboxOp[] = [];
+    const eligible: OutboxOp[] = [];
     for (const op of all) {
       const key = `${op.entity}:${op.id}`;
       if (seen.has(key)) continue; // a later operation on the same thing waits for the earlier one's answer
       seen.add(key);
       if (op.awaitsBase) continue;
-      batch.push(op);
-      if (batch.length >= MAX_OPERATIONS_PER_PUSH) break;
+      eligible.push(op);
     }
-    return batch;
+    const rank = (op: OutboxOp) => (op.kind === 'upsert' && op.entity !== 'note' ? 0 : 1);
+    return eligible.sort((a, b) => rank(a) - rank(b)).slice(0, MAX_OPERATIONS_PER_PUSH); // a stable sort: order kept within a rank
   }
 
   private async applyResults(db: LocalDb, sent: OutboxOp[], results: SyncOperationResult[]): Promise<number> {

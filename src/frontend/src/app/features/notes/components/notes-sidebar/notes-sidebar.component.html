@@ -5,7 +5,13 @@
       InkNote
     </span>
     <span class="tools">
-      <button type="button" class="tool" title="New note" aria-label="New note" (click)="newNote()">
+      <button
+        type="button"
+        class="tool"
+        [title]="currentFolder() ? 'New note in ' + currentFolder()!.name : 'New note'"
+        aria-label="New note"
+        (click)="newNote()"
+      >
         <nz-icon nzType="file-add" nzTheme="outline" />
       </button>
       <button
@@ -44,7 +50,9 @@
     </div>
   }
 
-  <div class="tree-area">
+  <!-- A click on the empty space (here, or under the last row, which the tree reports) = "no folder selected":
+       the next new note or folder goes to the top level, like in VS Code. -->
+  <div class="tree-area" (click)="onTreeAreaClick($event)">
     @if (search.active()) {
       <app-search-results
         [results]="search.results()"
@@ -78,6 +86,10 @@
         (togglePin)="togglePin($event)"
         (deleteNote)="confirmDeleteNote($event)"
         (exportNote)="exportNote($event)"
+        (exportFolder)="exportFolder($event)"
+        (importIntoFolder)="importIntoFolder($event)"
+        (moveNote)="moveNote($event)"
+        (emptyClick)="clearCurrentFolder()"
       />
     }
   </div>
@@ -167,3 +179,25 @@
     }
   </ul>
 </nz-dropdown-menu>
+
+<!-- The file picker of "Import into this folder": always here (a menu item cannot hold it), opened from the code. -->
+<input
+  #folderImport
+  class="hidden-input"
+  type="file"
+  multiple
+  accept=".md,.markdown,.txt,.zip,application/zip"
+  aria-hidden="true"
+  tabindex="-1"
+  (change)="importPicked($event)"
+/>
+
+<!-- What an import left out, shown in a dialog (the content of the dialog is this template). -->
+<ng-template #leftOutTpl>
+  <p class="left-out__intro">These were not imported:</p>
+  <ul class="left-out">
+    @for (item of leftOut(); track $index) {
+      <li><strong>{{ item.name }}</strong>: {{ item.reason }}</li>
+    }
+  </ul>
+</ng-template>

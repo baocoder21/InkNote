@@ -42,7 +42,11 @@ export class ImportService {
   private readonly org = inject(OrganizationRepository);
   private readonly attachments = inject(AttachmentRepository);
 
-  async importFiles(files: readonly File[], limits: ZipLimits = DEFAULT_ZIP_LIMITS): Promise<ImportReport> {
+  /**
+   * @param into a notebook to import INTO: the notes that would be at the top go in it, and the folders of a zip become
+   *             notebooks inside it. null (the default) = the top level.
+   */
+  async importFiles(files: readonly File[], limits: ZipLimits = DEFAULT_ZIP_LIMITS, into: string | null = null): Promise<ImportReport> {
     const report: ImportReport = { notes: 0, notebooksCreated: 0, tagsCreated: 0, attachments: 0, skipped: [], unusedFiles: 0 };
     const found: ZipEntry[] = [];
     const folders: string[][] = [];
@@ -51,7 +55,7 @@ export class ImportService {
       await this.collect(file, limits, found, folders, report);
     }
 
-    const context = await this.start(report);
+    const context = await this.start(report, into);
     const byPath = new Map(found.map((entry) => [pathKey(entry.path), entry.bytes]));
     const used = new Set<string>();
 
@@ -114,7 +118,7 @@ export class ImportService {
   }
 
   /** The folders and tags that already exist are reused: this keeps what the import needs to ask about them. */
-  private async start(report: ImportReport) {
+  private async start(report: ImportReport, into: string | null) {
     const notebooks = new Map<string, string>(); // "parentId/name" (lower case) -> id
     for (const n of await this.org.listNotebooks()) {
       notebooks.set(`${n.parentId ?? ''}/${n.name.toLowerCase()}`, n.id);
@@ -122,9 +126,9 @@ export class ImportService {
     const tags = new Map((await this.org.listTags()).map((t) => [t.name.toLowerCase(), t.id]));
 
     return {
-      /** The notebook for a folder path (creating the missing ones); null for "no notebook". */
+      /** The notebook for a folder path (creating the missing ones), below `into`; `into` itself for an empty path. */
       notebook: async (path: readonly string[]): Promise<string | null> => {
-        let parentId: string | null = null;
+        let parentId: string | null = into;
         for (const raw of path) {
           const name = raw.trim().slice(0, NOTEBOOK_NAME_MAX).trim();
           if (!name) continue;

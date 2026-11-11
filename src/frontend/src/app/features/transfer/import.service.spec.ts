@@ -215,6 +215,62 @@ describe('ImportService', () => {
     });
   });
 
+  describe('importing INTO a notebook', () => {
+    it('puts loose files in that notebook', async () => {
+      const target = await org.createNotebook('Target', null);
+
+      const report = await service.importFiles([file('a.md', '# A\n\ntext'), file('b.md', 'b')], DEFAULT_ZIP_LIMITS, target.id);
+
+      const found = await allNotes();
+      expect(report.notes).toBe(2);
+      expect(report.notebooksCreated).toBe(0);
+      expect(found.map((n) => n.notebookId)).toEqual([target.id, target.id]);
+    });
+
+    it('makes the folders of a zip into notebooks INSIDE it, and its top-level files go in it', async () => {
+      const work = await org.createNotebook('Work', null);
+      const target = await org.createNotebook('Target', work.id);
+
+      await service.importFiles(
+        [zipFile('x.zip', { 'top.md': 'top', 'Plans/': new Uint8Array(0), 'Plans/Roadmap.md': 'in plans' })],
+        DEFAULT_ZIP_LIMITS,
+        target.id,
+      );
+
+      const byTitle = Object.fromEntries((await allNotes()).map((n) => [n.title, n]));
+      expect(await notebookPath(byTitle['top'].notebookId)).toBe('Work/Target');
+      expect(await notebookPath(byTitle['Roadmap'].notebookId)).toBe('Work/Target/Plans');
+    });
+
+    it('reuses a notebook of the same name that already exists inside the target, not one elsewhere', async () => {
+      const target = await org.createNotebook('Target', null);
+      const inside = await org.createNotebook('Plans', target.id);
+      await org.createNotebook('Plans', null); // same name, other place: must stay untouched
+
+      const report = await service.importFiles([zipFile('x.zip', { 'Plans/a.md': 'a' })], DEFAULT_ZIP_LIMITS, target.id);
+
+      const [note] = await allNotes();
+      expect(report.notebooksCreated).toBe(0);
+      expect(note.notebookId).toBe(inside.id);
+    });
+
+    it('keeps the tags, status and pin of the file while moving it into the target', async () => {
+      const target = await org.createNotebook('Target', null);
+
+      await service.importFiles([file('n.md', serializeNoteFile({ title: 'N', content: 'x', tags: ['t1'], status: 'Active', pinned: true }))], DEFAULT_ZIP_LIMITS, target.id);
+
+      const [note] = await allNotes();
+      expect(note).toMatchObject({ notebookId: target.id, isPinned: true, status: 'Active' });
+      expect(await tagNames(note.tagIds)).toEqual(['t1']);
+    });
+
+    it('with no target the notes stay at the top level, as before', async () => {
+      await service.importFiles([file('a.md', 'a')]);
+
+      expect((await allNotes())[0].notebookId).toBeNull();
+    });
+  });
+
   describe('files that are not what they say, and zips that are too much', () => {
     it('reports a ".zip" that is not a zip', async () => {
       const report = await service.importFiles([file('broken.zip', 'this is not a zip')]);

@@ -2,6 +2,15 @@
 
 :host {
   display: block;
+  // Fills the sidebar, so that the empty space under the last row is also a place to drop a note ("top level").
+  min-height: 100%;
+
+  // A drop would move the note to the top level: the whole tree gets a dashed frame.
+  &.drop-root {
+    border-radius: 6px;
+    outline: 2px dashed var(--ink-accent);
+    outline-offset: -2px;
+  }
 }
 
 .tree {
@@ -29,6 +38,17 @@
 
   &--current {
     background: var(--ink-bg-hover);
+  }
+
+  // Drag and drop: the note in the hand is dimmed; the folder it would land in gets a dashed frame.
+  &--dragging {
+    opacity: 0.45;
+  }
+
+  &--drop {
+    background: var(--ink-bg-selected);
+    outline: 2px dashed var(--ink-accent);
+    outline-offset: -2px;
   }
 
   &--active {

@@ -6,7 +6,8 @@ import { readBytes } from '../attachments/data/attachment-repository';
 import { NotesRepository } from '../notes/data/notes-repository';
 import { OrganizationRepository } from '../notes/data/organization-repository';
 import { LocalDbService } from '../sync/local/local-db';
-import { ExportService, MANIFEST_FILE, notebookFolders } from './export.service';
+import { ExportService, MANIFEST_FILE, notebookFolders, notebookWithDescendants } from './export.service';
+import { ImportService } from './import.service';
 import { parseNoteFile } from './note-file';
 
 let counter = 0;
@@ -123,6 +124,69 @@ describe('ExportService', () => {
     });
   });
 
+  describe('one notebook', () => {
+    it('is a zip with the notebook as its top folder, its sub-notebooks and their notes, and nothing else', async () => {
+      const work = await org.createNotebook('Work', null);
+      const plans = await org.createNotebook('Plans', work.id);
+      const other = await org.createNotebook('Other', null);
+      await notes.create('Loose', 'x', null);
+      await notes.create('Report', 'in work', work.id);
+      await notes.create('Roadmap', 'in plans', plans.id);
+      await notes.create('Elsewhere', 'in other', other.id);
+
+      const result = await service.exportNotebook(work.id);
+      const zip = await unzip(result!.blob);
+
+      expect(result!.notes).toBe(2);
+      expect(result!.fileName).toBe('Work.zip');
+      expect(names(zip)).toEqual(['Work/', 'Work/Plans/', 'Work/Plans/Roadmap.md', 'Work/Report.md']);
+    });
+
+    it('starts at the chosen notebook even when it sits deep in the tree: its parents are not in the zip', async () => {
+      const a = await org.createNotebook('A', null);
+      const b = await org.createNotebook('B', a.id);
+      await notes.create('Deep', 'x', b.id);
+
+      const zip = await unzip((await service.exportNotebook(b.id))!.blob);
+
+      expect(names(zip)).toEqual(['B/', 'B/Deep.md']);
+    });
+
+    it('keeps an empty notebook as a folder, and the tags and status of its notes', async () => {
+      const book = await org.createNotebook('Book', null);
+      const tag = await org.createTag('t');
+      if (tag.status !== 'ok') throw new Error('expected ok');
+      const note = await notes.create('N', 'x', book.id);
+      await notes.updateOrganization(note.id, { notebookId: book.id, isPinned: false, status: 'Active', tagIds: [tag.tag.id] });
+      await org.createNotebook('Empty', book.id);
+
+      const zip = await unzip((await service.exportNotebook(book.id))!.blob);
+
+      expect(names(zip)).toEqual(['Book/', 'Book/Empty/', 'Book/N.md']);
+      expect(parseNoteFile(text(zip, 'Book/N.md'), 'N.md')).toMatchObject({ tags: ['t'], status: 'Active' });
+    });
+
+    it('is null for a notebook that does not exist', async () => {
+      expect(await service.exportNotebook(ID_A)).toBeNull();
+    });
+
+    it('imports back as the same notebook, wherever it is imported', async () => {
+      const book = await org.createNotebook('Book', null);
+      await org.createNotebook('Sub', book.id);
+      await notes.create('N', 'text', book.id);
+      const result = (await service.exportNotebook(book.id))!;
+      const target = await org.createNotebook('Elsewhere', null);
+
+      const importer = TestBed.inject(ImportService);
+      await importer.importFiles([new File([result.blob], result.fileName)], undefined, target.id);
+
+      const all = await local.db.notebooks.toArray();
+      const imported = all.find((n) => n.name === 'Book' && n.parentId === target.id);
+      expect(imported).toBeTruthy();
+      expect(all.some((n) => n.name === 'Sub' && n.parentId === imported!.id)).toBe(true);
+    });
+  });
+
   describe('attached files', () => {
     it('adds the file to _attachments and writes the link as a relative path from the folder of the note', async () => {
       const book = await org.createNotebook('Trips', null);
@@ -220,6 +284,29 @@ describe('ExportService', () => {
     it('is null for a note that does not exist', async () => {
       expect(await service.exportNote('missing')).toBeNull();
     });
+  });
+});
+
+describe('notebookWithDescendants', () => {
+  it('gives the notebook and everything below it, and nothing else', () => {
+    const tree = [
+      { id: 'a', parentId: null },
+      { id: 'b', parentId: 'a' },
+      { id: 'c', parentId: 'b' },
+      { id: 'd', parentId: null },
+    ];
+
+    expect([...notebookWithDescendants('a', tree)].sort()).toEqual(['a', 'b', 'c']);
+    expect([...notebookWithDescendants('c', tree)]).toEqual(['c']);
+  });
+
+  it('does not loop on a cycle in the data', () => {
+    const cycle = [
+      { id: 'a', parentId: 'b' },
+      { id: 'b', parentId: 'a' },
+    ];
+
+    expect([...notebookWithDescendants('a', cycle)].sort()).toEqual(['a', 'b']);
   });
 });
 

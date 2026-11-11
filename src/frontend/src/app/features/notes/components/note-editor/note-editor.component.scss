@@ -31,7 +31,7 @@
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--ink-text);
+    color: var(--ink-title);
     font: inherit;
     font-size: 1.6rem;
     font-weight: 700;
@@ -43,7 +43,7 @@
     // Selected text (after "Rename") in the theme color instead of the browser blue.
     &::selection {
       background: var(--ink-bg-selected);
-      color: var(--ink-text);
+      color: var(--ink-title);
     }
   }
 }

@@ -26,6 +26,7 @@
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  color: var(--ink-title);
 }
 
 .tools {
@@ -283,5 +284,22 @@
       color: var(--ink-text);
       outline: none;
     }
+  }
+}
+
+// The real file input stays out of sight: the menu item opens it.
+.hidden-input {
+  display: none;
+}
+
+// The dialog that lists what an import left out.
+.left-out {
+  max-height: 14rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  overflow-y: auto;
+
+  &__intro {
+    margin: 0 0 0.5rem;
   }
 }

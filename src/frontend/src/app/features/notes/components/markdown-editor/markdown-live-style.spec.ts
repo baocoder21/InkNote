@@ -31,6 +31,30 @@ describe('liveMarkdownStyle', () => {
     expect(classesPerLine('Title\n=====')).toEqual([['cm-md-h1'], ['cm-md-h1']]);
   });
 
+  it('marks list items (bullets, numbers, tasks, nested ones and their continuation lines) but not plain paragraphs', () => {
+    expect(classesPerLine('plain one\n\n- bullet\n  continued\n  + nested\n1. numbered\n- [ ] task\n\nplain two')).toEqual([
+      [],
+      [],
+      ['cm-md-list'],
+      ['cm-md-list'],
+      ['cm-md-list'],
+      ['cm-md-list'],
+      ['cm-md-list'],
+      [],
+      [],
+    ]);
+  });
+
+  it('combines the list class with the others when a block sits inside a list item (the CSS order decides the color)', () => {
+    expect(classesPerLine('- item\n\n  ```js\n  const x = 1;\n  ```')).toEqual([
+      ['cm-md-list'],
+      ['cm-md-list'],
+      ['cm-md-code', 'cm-md-list'],
+      ['cm-md-code', 'cm-md-list'],
+      ['cm-md-code', 'cm-md-list'],
+    ]);
+  });
+
   it('does not treat a "#" without a space as a heading (same rule as the preview)', () => {
     expect(classesPerLine('#hashtag')).toEqual([[]]);
   });

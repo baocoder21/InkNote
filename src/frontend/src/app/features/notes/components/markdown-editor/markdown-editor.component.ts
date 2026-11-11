@@ -16,6 +16,7 @@ import { EditorState } from '@codemirror/state';
 import { EditorView, placeholder } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { inkEditorTheme } from './ink-editor-theme';
+import { selectionToolbar } from './selection-toolbar';
 
 /** Does this drag or paste carry files? */
 const hasFiles = (data: DataTransfer | null): boolean => (data?.files?.length ?? 0) > 0;
@@ -74,6 +75,7 @@ export class MarkdownEditorComponent {
             placeholder('Write Markdown here...'),
             EditorView.contentAttributes.of({ 'aria-label': 'Note content' }),
             inkEditorTheme, // colors from the --ink-* variables of the current theme
+            selectionToolbar, // the formatting bar that floats above selected text
             EditorView.domEventHandlers({
               paste: (event) => this.takeFiles(event, event.clipboardData),
               drop: (event, view) => {

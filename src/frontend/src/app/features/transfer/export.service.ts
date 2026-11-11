@@ -58,6 +58,22 @@ export function notebookFolders(notebooks: readonly Pick<LocalNotebook, 'id' | '
   return folders;
 }
 
+/** The ids of a notebook and of everything below it (a cycle in the data cannot make this loop). */
+export function notebookWithDescendants(notebookId: string, notebooks: readonly Pick<LocalNotebook, 'id' | 'parentId'>[]): Set<string> {
+  const found = new Set([notebookId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of notebooks) {
+      if (n.parentId !== null && found.has(n.parentId) && !found.has(n.id)) {
+        found.add(n.id);
+        grew = true;
+      }
+    }
+  }
+  return found;
+}
+
 /**
  * Takes the user's notes out of the app: a zip of Markdown files (one folder per notebook, front matter with the
  * title, tags, status and pin) that any Markdown tool can open, with the attached files in "_attachments" and links
@@ -82,6 +98,36 @@ export class ExportService {
     return {
       blob: new Blob([zipSync(files)], { type: 'application/zip' }),
       fileName: `inknote-export-${isoDay(now)}.zip`,
+      notes: notes.length,
+      attachments: build.attachments,
+      missingAttachments: build.missing,
+    };
+  }
+
+  /**
+   * One notebook with everything in it (its sub-notebooks and all their notes) as a zip. The notebook itself is the top
+   * folder of the zip, so importing the zip anywhere brings back a notebook of the same name. null when it does not exist.
+   */
+  async exportNotebook(notebookId: string, now: Date = new Date()): Promise<ExportResult | null> {
+    const [allNotes, notebooks, tags] = await Promise.all([this.data.notes(), this.data.notebooks(), this.data.tags()]);
+    const root = notebooks.find((n) => n.id === notebookId);
+    if (!root) {
+      return null;
+    }
+
+    const inside = notebookWithDescendants(notebookId, notebooks);
+    // The chosen notebook becomes the top: its own parents are not part of the zip.
+    const subset = notebooks.filter((n) => inside.has(n.id)).map((n) => (n.id === notebookId ? { ...n, parentId: null } : n));
+    const folders = notebookFolders(subset);
+    const notes = allNotes.filter((n) => n.notebookId !== null && inside.has(n.notebookId));
+    const build = await this.pack(notes, folders, new Map(tags.map((t) => [t.id, t.name])), now);
+
+    for (const folder of folders.values()) {
+      build.files[`${folder.join('/')}/`] = new Uint8Array(0); // a notebook with no notes still exists
+    }
+    return {
+      blob: new Blob([zipSync(build.files)], { type: 'application/zip' }),
+      fileName: `${safeName(root.name, 80, 'Notebook')}.zip`,
       notes: notes.length,
       attachments: build.attachments,
       missingAttachments: build.missing,

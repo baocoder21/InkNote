@@ -8,10 +8,13 @@
           tabindex="0"
           [attr.aria-expanded]="row.hasChildren ? row.expanded : null"
           [class.row--current]="row.notebook.id === currentFolderId()"
+          [class.row--drop]="dropOn() === row.notebook.id"
           [style.padding-left.rem]="0.5 + row.depth * 1"
           (click)="folderClick.emit(row.notebook)"
           (keydown.enter)="folderClick.emit(row.notebook)"
           (contextmenu)="openMenu($event, row, menu)"
+          (dragover)="folderOver($event, row)"
+          (drop)="folderDrop($event, row.notebook)"
         >
           <nz-icon
             class="row__chevron"
@@ -66,11 +69,18 @@
           class="row row--note"
           role="treeitem"
           routerLinkActive="row--active"
+          draggable="true"
+          [class.row--dragging]="dragged()?.id === row.note.id"
           [style.padding-left.rem]="0.5 + row.depth * 1"
           (contextmenu)="openMenu($event, row, menu)"
+          (dragstart)="dragStart($event, row.note)"
+          (dragend)="dragEnd()"
+          (dragover)="noteOver($event, row.note)"
+          (drop)="noteDrop($event, row.note)"
         >
-          <!-- preserve: opening a note keeps ?tag= in the URL, so a tag filter stays on -->
-          <a class="row__link" [routerLink]="['/notes', row.note.id]" queryParamsHandling="preserve">
+          <!-- preserve: opening a note keeps ?tag= in the URL, so a tag filter stays on.
+               draggable="false": a link is draggable by itself (it would drag its address); the ROW is what is dragged. -->
+          <a class="row__link" draggable="false" [routerLink]="['/notes', row.note.id]" queryParamsHandling="preserve">
             <span class="row__line">
               <nz-icon
                 class="row__chevron row__chevron--hidden"
@@ -137,6 +147,13 @@
       </li>
       <li nz-menu-item (click)="run(newFolderIn, folder)">
         <nz-icon nzType="folder-add" nzTheme="outline" /> New subfolder
+      </li>
+      <li nz-menu-divider></li>
+      <li nz-menu-item (click)="run(importIntoFolder, folder)">
+        <nz-icon nzType="import" nzTheme="outline" /> Import into this folder…
+      </li>
+      <li nz-menu-item (click)="run(exportFolder, folder)">
+        <nz-icon nzType="export" nzTheme="outline" /> Export this folder
       </li>
       <li nz-menu-divider></li>
       <li nz-menu-item (click)="run(renameFolder, folder)">

@@ -729,3 +729,71 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - Treat logs as data that must be protected: decide what may be written, and write a test that proves the rest never is.
 
 **Read next**: [Playwright intro](https://playwright.dev/docs/intro), [Playwright locators](https://playwright.dev/docs/locators), [GitHub Actions: workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions), [Serilog.AspNetCore](https://github.com/serilog/serilog-aspnetcore).
+
+
+## After Phase 12 - Drag and drop, folder import/export, Light-theme colors
+
+**Goal**: three everyday improvements: move a note by dragging it into a folder; import/export from the right-click menu of a folder; black plain text in the Light theme.
+
+**Concepts**
+- **HTML5 drag and drop** has four events on the thing dragged and the place it is dropped on. `dragstart` (on the note): put data in `event.dataTransfer` and remember what is dragged. `dragover` (on a target, fires many times a second): calling `event.preventDefault()` means "a drop is welcome here"; without it the browser refuses the drop. `drop`: do the work. `dragend` (on the source): clean up, also when the drag was cancelled with Esc. The browser hides the data of a drag until the drop, so while dragging the app remembers WHICH note in a signal.
+- **A custom data type** (`application/x-inknote-note`) marks our own drags: a file dragged from the desktop has other types and is simply not a target.
+- **Events bubble**: a drop on a folder row would also reach the tree behind it ("empty space = top level"). The row calls `stopPropagation()` so that the outer area only sees drops on empty space.
+- **Design tokens**: a color is a CSS variable per theme (`--ink-title`). A new meaning (the title) gets a NEW token, so one theme can change without touching the others.
+- **Line decorations in CodeMirror**: the editor adds a CSS class to whole lines by walking the Markdown syntax tree (`ListItem` becomes `cm-md-list`); then plain CSS chooses the color. Order of rules matters when a line has several classes.
+
+**How to verify** (restart `ng serve` is not needed; the page reloads by itself)
+1. Drag a note from the sidebar onto a folder: the folder gets a dashed frame, the note moves in and the folder opens. Drag it onto the empty space under the tree: it goes back to the top level. Hold a note over a closed folder for a moment: the folder opens.
+2. Right-click a folder: "Import into this folder…" opens the file chooser (pick a `.md` or a zip: the notes appear in that folder; what could not be imported is listed in a dialog). "Export this folder" saves `<folder>.zip`.
+3. Theme Light: the app name and the note title are black; plain paragraphs in the editor are black; lines starting with `-`, `+`, `1.`, tables and code keep their colors; Dark and Warm look as before.
+4. `ng test --watch=false` (754 tests), `npm run e2e` in `src/frontend` with the Docker system running (9 tests).
+
+**Pitfalls (met while building)**
+- **A second file input broke an old test**: the sidebar's hidden `<input type=file>` made the selector `input[type=file]` of the Import page test ambiguous. Selectors must say WHERE (`app-transfer-page input[type=file]`).
+- **Dragging a link drags its address**: the note row contains a link, which the browser drags by itself. `draggable="false"` on the link and `draggable="true"` on the row.
+- **`dragover` is not a one-off event**: starting a timer (open the folder after 0.7 s) on every dragover would start hundreds; keep one timer and cancel it when the pointer leaves.
+- **jsdom has no DragEvent / DataTransfer**: tests make a plain event and attach a small fake `dataTransfer`; the real Chrome run (Playwright `dragTo`) is what proves the browser behavior.
+- **A cleanup that deletes "everything in the bucket" is wrong** (it once removed a real file): list, match each item to test data, delete exactly those.
+
+**Honest limits**: mouse only (no touch drag); one note at a time; folders cannot be dragged (a folder cannot be moved into another one by dragging); sidebar names stay pink in the Light theme.
+
+**Key takeaways**
+- In drag and drop, `preventDefault` on `dragover` is the "yes"; everything else is bookkeeping.
+- Let one component draw and report, and another save: the tree knows nothing about stores, so it stays easy to test.
+- Reuse the pipeline you already trust (import into a folder = the same import with one more parameter).
+
+**Read next**: [HTML Drag and Drop API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API), [DataTransfer (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer), [Playwright drag and drop](https://playwright.dev/docs/input#drag-and-drop).
+
+
+## After Phase 12 (2) - New items like VS Code, the selection toolbar, two sync bugs
+
+**Goal**: a new note or folder goes where you point (the top level after a click on empty space); a formatting bar appears above selected text; and the tests found two data-losing bugs in the sync engine, which are now fixed.
+
+**Concepts**
+- **Selection state of a file explorer.** What is "selected" decides where new things go. VS Code: click a folder = that folder; click a file = its folder; click the empty space = nothing = the root. InkNote keeps this as one value, `currentFolderId`, and the empty-space click sets it to null.
+- **CodeMirror tooltip.** `showTooltip` takes a `Tooltip { pos, above, create }` computed from the editor state. The editor draws it, positions it next to `pos` and keeps it in view. `create` must be the SAME function each time, so CodeMirror recognizes "the same tooltip" and only moves it.
+- **StateField and StateEffect.** A field is a piece of editor state (here: focused? mouse down?). An effect is a message that changes it. `focusChangeEffect` sends one when the editor gains or loses focus.
+- **A command as a switch.** "Bold" adds `**` around the selection, or removes them when they are already there. One transaction means one undo step.
+- **Atomicity.** Two steps that must look like one (pick the operations to send, mark them as sent) need ONE database transaction; otherwise another writer can slip in between, and its change is lost without any error.
+- **Dependency order.** A note refers to a folder; the server drops a reference to something it does not know. So the thing referred to must be sent first, whatever the order in which the user did things.
+
+**How to verify**
+1. Select text in a note: a bar appears above it. B / I / S / `</>` wrap the selection (press again to remove), the link button makes `[text](url)` with `url` selected, H cycles `#`, `##`, `###`, the list buttons number or bullet the selected lines, `{ }` fences them. Ctrl+Z undoes one click. Drag with the mouse: the bar waits until you release. Click the title: the bar goes away.
+2. Click a folder and press "New note": it is made inside. Click the EMPTY space under the tree and press "New note" or "New folder": it is made at the top level. The button tooltips say where.
+3. Offline test of the dependency fix: turn the network off (DevTools, Network, Offline), edit a note, make a folder, drag the note into it, go back online and reload: the note is still in the folder.
+4. `ng test --watch=false` (805 tests), `npm run e2e` (13 tests, Docker system running).
+
+**Pitfalls (met while building)**
+- **jsdom is not a browser**: CodeMirror's focus change arrives later than in Chrome, and a simulated click is handled by CodeMirror itself (it moved the selection). The unit tests set up their state first and the real-mouse behavior is tested in Chrome with Playwright.
+- **A test that passes before the fix proves nothing.** The first test written for the sync race passed on the buggy code (the order of IndexedDB transactions was not the one assumed); it was replaced by a scan of 40 moments that failed on moment 0 without the fix and passes with it.
+- **Read the evidence of a failed run, not only its message.** Playwright keeps a page snapshot of the failure: "synced, folder open and empty, note outside" ruled out the UI and showed that the data had been put back.
+- **Do not assume a "stable" test after one more green run**: it took a repeat of 16 to show the flake was gone.
+
+**Honest limits**: no keyboard shortcuts for the formatting commands; the bar is mouse/keyboard-selection only (not shown for touch selection handles); the heading button cycles up to `###`; sending notebooks and tags first assumes a note never needs to be sent before the creation of a folder (true: folders do not refer to notes).
+
+**Key takeaways**
+- A flaky test is a bug report: keep it, repeat it, read its evidence.
+- Whatever must be atomic goes in one transaction; whatever must come first is sorted first.
+- Test the same rule at two levels: the pure function (fast, exact) and the real browser (what a person feels).
+
+**Read next**: [CodeMirror tooltips example](https://codemirror.net/examples/tooltip/), [CodeMirror state fields](https://codemirror.net/docs/guide/#state-fields-and-effects), [Dexie transactions](https://dexie.org/docs/Tutorial/Understanding-the-basics#transactions).
