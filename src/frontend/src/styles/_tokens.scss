@@ -1,9 +1,9 @@
 // Design tokens: the only place where raw colors live. Components use var(--ink-*).
 //
 // Three themes, chosen with <html data-theme="light|dark|warm"> (see core/theme.service.ts):
-//   dark  - Nord:            background #2e3440, text #d8dee9
+//   dark  - Kanagawa Dragon: background #181616, text #c5c9c5
 //   warm  - Kanagawa Lotus:  background #f1e9d2, text #4d699b
-//   light - paper gray:      background #edeeec, text #dc347f
+//   light - paper gray:      background #edeeec, text black, UI text navy #23394f
 // The background and text colors are the user's choice; every other color (surfaces, lines,
 // accents, the Markdown "special characters", code colors) was picked to be readable on them
 // (contrast ratios were checked, see docs/LEARNING.md). A new token must be defined in ALL
@@ -14,62 +14,62 @@
 //   --ink-heading, --ink-link            : preview
 //   --ink-syn-*                          : colors of the editor's Markdown syntax and of code
 
-// ---- Dark: Nord ----
+// ---- Dark: Kanagawa Dragon ----
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark; // native scrollbars, inputs and the like follow the theme
 
-  --ink-bg-sidebar: #272c36;
-  --ink-bg: #2e3440;
-  --ink-bg-elevated: #3b4252; // inputs, menus
-  --ink-bg-code: #292e39; // code blocks, inline code, table headers
+  --ink-bg-sidebar: #1d1c19; // dragonBlack2
+  --ink-bg: #181616; // dragonBlack3
+  --ink-bg-elevated: #282727; // inputs, menus (dragonBlack4)
+  --ink-bg-code: #1d1c19; // code blocks, inline code, table headers
 
-  --ink-border: #3b4252;
-  --ink-border-strong: #4c566a;
+  --ink-border: #282727;
+  --ink-border-strong: #4a4845;
 
-  --ink-text: #d8dee9;
-  --ink-title: #d8dee9; // the app name and the title of the open note
-  --ink-editor-text: #d8dee9; // plain paragraphs in the editor (lists, tables and code keep --ink-text)
-  --ink-text-muted: #98a3b8;
+  --ink-text: #c5c9c5; // dragonWhite
+  --ink-title: #c5c9c5; // the app name and the title of the open note
+  --ink-editor-text: #c5c9c5; // text in the editor: the same as the preview. Only headings (and the marks) have a color
+  --ink-text-muted: #9e9b93; // dragonGray2
   // The ONE color of the rendered preview (the editor is the colorful side). Black would vanish on
   // this background, so the dark theme uses its normal light text.
-  --ink-preview-text: #d8dee9;
-  --ink-bg-mark: rgba(235, 203, 139, 0.3); // the search words highlighted in the results
+  --ink-preview-text: #c5c9c5;
+  --ink-bg-mark: rgba(196, 178, 138, 0.3); // the search words highlighted in the results
 
   // Note status (the colored chips in the sidebar tree).
-  --ink-status-active: #a3be8c;
-  --ink-status-onhold: #ebcb8b;
-  --ink-status-completed: #88c0d0;
-  --ink-status-dropped: #ee9aa1;
+  --ink-status-active: #87a987; // dragonGreen
+  --ink-status-onhold: #c4b28a; // dragonYellow
+  --ink-status-completed: #8ba4b0; // dragonBlue2
+  --ink-status-dropped: #c4746e; // dragonRed
 
-  --ink-bg-hover: rgba(216, 222, 233, 0.07);
-  --ink-bg-selected: rgba(136, 192, 208, 0.2);
-  --ink-text-selected: #88c0d0;
-  --ink-accent: #88c0d0;
-  --ink-on-accent: #2e3440; // text on an accent-colored button
-  --ink-danger: #e5848d;
+  --ink-bg-hover: rgba(197, 201, 197, 0.06);
+  --ink-bg-selected: rgba(139, 164, 176, 0.2);
+  --ink-text-selected: #8ba4b0;
+  --ink-accent: #8ba4b0;
+  --ink-on-accent: #181616; // text on an accent-colored button
+  --ink-danger: #c4746e;
 
-  --ink-heading: #88c0d0;
-  --ink-link: #88a9ca;
+  --ink-heading: #c8c093; // oldWhite
+  --ink-link: #8ba4b0;
 
-  // Markdown "special characters" (# * ` > - [ ] ( )) are yellow: visible but not loud.
-  --ink-syn-heading: #88c0d0;
-  --ink-syn-mark: #ebcb8b;
-  --ink-syn-strong: #eceff4;
-  --ink-syn-emphasis: #c39dbc;
-  --ink-syn-link: #88a9ca;
-  --ink-syn-url: #8fbcbb;
-  --ink-syn-code: #a3be8c;
-  --ink-syn-quote: #98a3b8;
-  --ink-syn-plain: #d8dee9;
-  --ink-syn-keyword: #88a9ca;
-  --ink-syn-string: #a3be8c;
-  --ink-syn-number: #c39dbc;
-  --ink-syn-comment: #8893aa;
-  --ink-syn-function: #88c0d0;
-  --ink-syn-property: #8fbcbb;
-  --ink-syn-type: #8fbcbb;
-  --ink-syn-punct: #9aa5b8;
+  // Markdown "special characters" (# * ` > - [ ] ( )) are a quiet green: visible but not loud.
+  --ink-syn-heading: #c8c093;
+  --ink-syn-mark: #8a9a7b; // dragonGreen2
+  --ink-syn-strong: #c5c9c5; // bold and italic keep the text color: weight and slant are enough
+  --ink-syn-emphasis: #c5c9c5;
+  --ink-syn-link: #8ba4b0;
+  --ink-syn-url: #8ea4a2; // dragonAqua
+  --ink-syn-code: #87a987;
+  --ink-syn-quote: #9e9b93;
+  --ink-syn-plain: #c5c9c5;
+  --ink-syn-keyword: #8992a7; // dragonViolet
+  --ink-syn-string: #8a9a7b;
+  --ink-syn-number: #b98d7b; // dragonOrange2
+  --ink-syn-comment: #868e8c;
+  --ink-syn-function: #8ba4b0;
+  --ink-syn-property: #949fb5; // dragonTeal
+  --ink-syn-type: #8ea4a2;
+  --ink-syn-punct: #9e9b93;
 }
 
 // ---- Warm: Kanagawa Lotus ----
@@ -86,7 +86,7 @@
 
   --ink-text: #4d699b;
   --ink-title: #4d699b;
-  --ink-editor-text: #4d699b;
+  --ink-editor-text: #26231d; // the same near-black as the preview
   --ink-text-muted: #655f84;
   --ink-preview-text: #26231d; // near-black, warm
   --ink-bg-mark: rgba(214, 140, 20, 0.32);
@@ -108,8 +108,8 @@
 
   --ink-syn-heading: #624c83;
   --ink-syn-mark: #a24b00;
-  --ink-syn-strong: #3d3d68;
-  --ink-syn-emphasis: #7a4a78;
+  --ink-syn-strong: #26231d; // bold and italic keep the text color: weight and slant are enough
+  --ink-syn-emphasis: #26231d;
   --ink-syn-link: #2b6985;
   --ink-syn-url: #3d6c61;
   --ink-syn-code: #4e6a31;
@@ -137,8 +137,8 @@
   --ink-border: #d3d4d1;
   --ink-border-strong: #bcbeba;
 
-  --ink-text: #dc347f;
-  --ink-title: #1c1f23; // black: only the Markdown marks and the text next to them are pink
+  --ink-text: #23394f; // the text of the interface (sidebar, buttons, pickers): a dark slate blue
+  --ink-title: #1c1f23; // black
   --ink-editor-text: #1c1f23;
   --ink-text-muted: #62666d;
   --ink-preview-text: #1c1f23; // near-black
@@ -156,18 +156,18 @@
   --ink-on-accent: #ffffff;
   --ink-danger: #c0262d;
 
-  --ink-heading: #a31f55;
+  --ink-heading: #0e6070; // deep teal
   --ink-link: #1b65a8;
 
-  --ink-syn-heading: #a31f55;
+  --ink-syn-heading: #0e6070;
   --ink-syn-mark: #1b65a8;
-  --ink-syn-strong: #8f1747;
-  --ink-syn-emphasis: #7a4fb5;
+  --ink-syn-strong: #1c1f23; // bold and italic keep the text color: weight and slant are enough
+  --ink-syn-emphasis: #1c1f23;
   --ink-syn-link: #1b65a8;
   --ink-syn-url: #0a6b79;
   --ink-syn-code: #276c3f;
   --ink-syn-quote: #62666d;
-  --ink-syn-plain: #3a3f46; // code text: neutral, the pink is for the note's own text
+  --ink-syn-plain: #3a3f46; // code text: neutral
   --ink-syn-keyword: #7a4fb5;
   --ink-syn-string: #276c3f;
   --ink-syn-number: #a04708;

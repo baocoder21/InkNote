@@ -6,7 +6,7 @@ export type ThemeName = 'light' | 'dark' | 'warm';
 /** The themes offered to the user. `swatch` is the background color shown in the picker. */
 export const THEME_OPTIONS: readonly { id: ThemeName; label: string; swatch: string }[] = [
   { id: 'light', label: 'Light', swatch: '#edeeec' },
-  { id: 'dark', label: 'Dark', swatch: '#2e3440' },
+  { id: 'dark', label: 'Dark', swatch: '#181616' },
   { id: 'warm', label: 'Warm', swatch: '#f1e9d2' },
 ];
 

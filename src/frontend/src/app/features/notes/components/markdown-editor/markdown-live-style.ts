@@ -27,7 +27,6 @@ const LINE_CLASS: Readonly<Record<string, string>> = {
   SetextHeading1: 'cm-md-h1', // "Title" underlined with ===
   SetextHeading2: 'cm-md-h2', // "Title" underlined with ---
   Blockquote: 'cm-md-quote',
-  ListItem: 'cm-md-list', // "- text", "1. text", "- [ ] text" (and the lines that continue or nest inside it)
   FencedCode: 'cm-md-code',
   CodeBlock: 'cm-md-code', // indented code
   Table: 'cm-md-table',
@@ -103,9 +102,8 @@ const MONO = 'ui-monospace, SFMono-Regular, Consolas, monospace';
  * default 2em / 1.5em / 1.17em...), so a "## Title" has the same proportions on both sides.
  */
 const liveStyleTheme = EditorView.theme({
-  // Lines that carry Markdown marks keep the theme's text color, while a plain paragraph uses --ink-editor-text (black in the
-  // Light theme). This rule comes FIRST: a heading or a quote inside a list item has both classes and must win below.
-  '.cm-md-list, .cm-md-table, .cm-md-code': { color: 'var(--ink-text)' },
+  // Only headings carry a color of their own (below). The text after a list mark, in a table or after "1." is ordinary text:
+  // the marks themselves are colored (ink-editor-theme.ts), the words are not.
 
   '.cm-md-h1, .cm-md-h2, .cm-md-h3, .cm-md-h4, .cm-md-h5, .cm-md-h6': {
     color: 'var(--ink-heading)',
@@ -140,7 +138,7 @@ const liveStyleTheme = EditorView.theme({
     fontFamily: MONO,
     fontSize: '0.9em',
   },
-  '.cm-md-code': { backgroundColor: 'var(--ink-bg-code)' },
+  '.cm-md-code': { backgroundColor: 'var(--ink-bg-code)', color: 'var(--ink-syn-plain)' }, // code text uses the code colors
 
   '.cm-md-hr': { color: 'var(--ink-border-strong)' },
 });

@@ -12,8 +12,8 @@ import { liveMarkdownStyle } from './markdown-live-style';
 const layout = EditorView.theme({
   '&': {
     height: '100%',
-    // Plain paragraphs. Lines with Markdown marks keep --ink-text (list items, tables, code: see markdown-live-style.ts);
-    // headings, quotes and inline formatting have their own colors.
+    // All the text, the same color as in the preview. What has a color of its own: headings and quotes
+    // (markdown-live-style.ts), the Markdown marks, links and inline code, and code (highlight below).
     color: 'var(--ink-editor-text)',
     backgroundColor: 'var(--ink-bg)',
   },

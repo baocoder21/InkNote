@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <!-- Makes the app installable. The color is the title bar of the installed window: the script below sets it per theme. -->
   <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#2e3440">
+  <meta name="theme-color" content="#181616">
   <!--
     Applies the saved theme BEFORE the app starts, so the page never flashes the wrong colors.
     It sets <html data-theme="..."> (our design tokens) and loads the matching ng-zorro stylesheet
@@ -32,7 +32,7 @@
       var file = theme === 'dark' ? 'dark' : 'variable';
       document.documentElement.setAttribute('data-theme', theme);
       // Title bar color of the installed app = the theme's background (same colors as THEME_OPTIONS in theme.service.ts).
-      var bar = { light: '#edeeec', dark: '#2e3440', warm: '#f1e9d2' }[theme];
+      var bar = { light: '#edeeec', dark: '#181616', warm: '#f1e9d2' }[theme];
       document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
       var link = document.createElement('link');
       link.rel = 'stylesheet';

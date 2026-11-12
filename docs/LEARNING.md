@@ -828,3 +828,33 @@ dotnet user-secrets set "Jwt:Key" "<a long random string, at least 32 characters
 - A visual choice of the user belongs in the browser, saved when they let go.
 
 **Read next**: [Pointer events (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events), [ARIA window splitter pattern](https://www.w3.org/WAI/ARIA/apg/patterns/windowsplitter/), [`overflow-wrap` (MDN)](https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-wrap).
+
+## After Phase 12 (4) - A new palette, and less color
+
+**Goal**: no pink in the Light theme, only headings colored (the same in all three themes), and Dark as Kanagawa Dragon.
+
+**Concepts**
+- **Design tokens pay off**: a whole theme change is one file (`_tokens.scss`) plus the few places where a color is baked in (icons, the manifest, the title-bar color). Components were not touched.
+- **Less color is easier to read**: when everything is colored, nothing stands out. Color is kept for structure (headings, marks) and the words stay one color, as in the preview.
+- **Contrast (WCAG)**: a ratio between the text and its background; 4.5:1 is the AA minimum for normal text. It is computed from the relative luminance of both colors, so it can be checked by a small script instead of by eye (one comment color in Dark was 4.38 and was lightened).
+- **A palette is a vocabulary**: Kanagawa Dragon names its colors (dragonBlack3, dragonWhite, oldWhite...). Mapping each name to ONE job (background, text, heading, accent) keeps a theme consistent.
+
+**How to verify**
+1. Theme Light: no pink anywhere; sidebar and buttons are dark blue-gray, headings teal; list text, table text, bold and italic words are black.
+2. Theme Dark: dark brown-black background, light gray text, tan headings, blue-gray accent; list text is the normal gray.
+3. Theme Warm: only the editor text changed (near-black, as the preview); the lists are not colored either.
+4. `ng test --watch=false` (827 tests).
+
+**Pitfalls (met while building)**
+- **The installed app has its own colors**: the icon, the splash `background_color` and the title bar were still Nord blue after the tokens changed. Search the whole project for the OLD hex values, not only the tokens file.
+- **A leftover helper**: a line class that only existed to color list items stayed behind after the color went; it was removed with its tests.
+- **A browser script that registers a user in the running app writes to the REAL database**: the Docker app uses the owner's database, so two test accounts appeared there (deleted by id, nothing else touched). Run such scripts against a separate database (`POSTGRES_DB=inknote_e2e`).
+
+**Honest limits**: bold and italic are no longer colored in the editor (weight and slant remain); the Warm theme's pink selection color was not asked to change and stays; the PWA icon changed, so an installed app may keep the old icon until it is reinstalled.
+
+**Key takeaways**
+- Keep every color in one place, and search for old values everywhere when you change a palette.
+- Check contrast with numbers.
+- Whatever creates test data in a running system must point at a test database.
+
+**Read next**: [Kanagawa for Neovim (the palette)](https://github.com/rebelot/kanagawa.nvim), [WCAG contrast](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html).

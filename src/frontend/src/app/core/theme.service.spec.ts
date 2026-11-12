@@ -37,7 +37,7 @@ describe('ThemeService', () => {
 
     it('is the background of the theme: set at start and changed with every switch', () => {
       const service = create();
-      expect(meta()!.getAttribute('content')).toBe('#2e3440'); // dark, the default
+      expect(meta()!.getAttribute('content')).toBe('#181616'); // dark, the default
 
       service.set('light');
       expect(meta()!.getAttribute('content')).toBe('#edeeec');

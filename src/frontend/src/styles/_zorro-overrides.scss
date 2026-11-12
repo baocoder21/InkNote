@@ -1,6 +1,6 @@
 // Touch-ups for ng-zorro components, so that they follow OUR theme tokens in all three themes.
 // ng-zorro comes in a dark and a light build (see core/theme.service.ts); neither knows our
-// palettes (Nord, Kanagawa Lotus, paper gray), so the pieces the user sees most are restyled
+// palettes (Kanagawa Dragon, Kanagawa Lotus, paper gray), so the pieces the user sees most are restyled
 // here with var(--ink-*). They are global because ng-zorro draws these elements inside its own
 // components, and dropdowns/modals in an overlay at the end of <body>.
 // (Where a rule needs more weight than the stylesheet's own, the class is written twice.)
